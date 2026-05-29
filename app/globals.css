@@ -1,0 +1,123 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Playfair+Display:wght@600;700;800&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-display: "Playfair Display";
+  --font-sans: "Inter";
+  --background: #09090b;
+  --foreground: #f8fafc;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  background:
+    linear-gradient(135deg, rgba(9, 9, 11, 0.96), rgba(17, 24, 39, 0.92) 45%, rgba(9, 9, 11, 0.98)),
+    linear-gradient(90deg, rgba(236, 72, 153, 0.12), rgba(103, 232, 249, 0.08), rgba(253, 186, 116, 0.1));
+  color: var(--foreground);
+  font-family: var(--font-sans), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  overflow-x: hidden;
+}
+
+body::before {
+  position: fixed;
+  inset: 0;
+  z-index: -3;
+  content: "";
+  background:
+    linear-gradient(110deg, rgba(139, 92, 246, 0.18), transparent 28%, rgba(236, 72, 153, 0.12) 52%, transparent 74%),
+    linear-gradient(16deg, transparent, rgba(103, 232, 249, 0.12), transparent 46%, rgba(253, 186, 116, 0.08));
+  background-size: 170% 170%;
+  animation: ambient-shift 18s ease-in-out infinite alternate;
+}
+
+body::after {
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  content: "";
+  background-image:
+    radial-gradient(rgba(255, 255, 255, 0.12) 0.7px, transparent 0.7px),
+    linear-gradient(rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0.01));
+  background-position: 0 0;
+  background-size: 4px 4px, 100% 100%;
+  mix-blend-mode: screen;
+  opacity: 0.18;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+::selection {
+  background: rgba(236, 72, 153, 0.45);
+  color: #ffffff;
+}
+
+@keyframes ambient-shift {
+  0% {
+    background-position: 0% 20%;
+  }
+  100% {
+    background-position: 100% 80%;
+  }
+}
+
+@layer components {
+  .glass-panel {
+    border: 1px solid rgba(248, 250, 252, 0.13);
+    background: linear-gradient(135deg, rgba(248, 250, 252, 0.11), rgba(248, 250, 252, 0.045));
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.28);
+    backdrop-filter: blur(24px);
+  }
+
+  .glass-button {
+    border: 1px solid rgba(248, 250, 252, 0.15);
+    background: rgba(248, 250, 252, 0.1);
+    color: #f8fafc;
+    transition:
+      transform 180ms ease,
+      border-color 180ms ease,
+      background 180ms ease,
+      box-shadow 180ms ease;
+  }
+
+  .glass-button:hover {
+    transform: translateY(-1px);
+    border-color: rgba(248, 250, 252, 0.28);
+    background: rgba(248, 250, 252, 0.16);
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.22);
+  }
+
+  .focus-ring {
+    outline: none;
+  }
+
+  .focus-ring:focus-visible {
+    box-shadow: 0 0 0 3px rgba(103, 232, 249, 0.32);
+  }
+}
