@@ -2,10 +2,10 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { ImagePlus, Link2, MessageSquareText, Sparkles, X } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { vibes } from "@/lib/constants";
-import { spaces } from "@/lib/mock-data";
 import type { Post, VibeTag } from "@/types/app";
+import { useSpaces } from "@/hooks/use-db";
 
 type CreatePostModalProps = {
   open: boolean;
@@ -14,11 +14,18 @@ type CreatePostModalProps = {
 };
 
 export function CreatePostModal({ open, onClose, onCreate }: CreatePostModalProps) {
+  const { spaces } = useSpaces();
   const [content, setContent] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [musicLink, setMusicLink] = useState("");
-  const [spaceId, setSpaceId] = useState(spaces[0].id);
+  const [spaceId, setSpaceId] = useState("");
   const [moodTag, setMoodTag] = useState<VibeTag>("Midnight Energy");
+
+  useEffect(() => {
+    if (spaces.length > 0 && !spaceId) {
+      setSpaceId(spaces[0].id);
+    }
+  }, [spaces, spaceId]);
 
   function submitPost() {
     const trimmed = content.trim();
@@ -34,7 +41,7 @@ export function CreatePostModal({ open, onClose, onCreate }: CreatePostModalProp
     setContent("");
     setImageUrl("");
     setMusicLink("");
-    setSpaceId(spaces[0].id);
+    setSpaceId(spaces[0]?.id || "");
     setMoodTag("Midnight Energy");
     onClose();
   }

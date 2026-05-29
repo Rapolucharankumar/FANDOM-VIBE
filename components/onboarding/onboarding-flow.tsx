@@ -7,6 +7,8 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { Tag } from "@/components/ui/tag";
 import { fandoms, hobbies, vibes } from "@/lib/constants";
+import { dbClient } from "@/lib/db-client";
+import type { Fandom, Hobby, VibeTag } from "@/types/app";
 
 const steps = [
   {
@@ -54,7 +56,7 @@ export function OnboardingFlow() {
     });
   }
 
-  function next() {
+  async function next() {
     if (!canContinue) return;
     if (step < steps.length - 1) {
       setStep((value) => value + 1);
@@ -62,6 +64,16 @@ export function OnboardingFlow() {
     }
 
     window.localStorage.setItem("fandom-vibe-onboarding", JSON.stringify(selected));
+    try {
+      const currentId = await dbClient.getCurrentUserId();
+      await dbClient.updateProfile(currentId, {
+        fandoms: selected.Fandoms as Fandom[],
+        hobbies: selected.Hobbies as Hobby[],
+        vibes: selected.Vibes as VibeTag[]
+      });
+    } catch (err) {
+      console.error("Failed to save onboarding data to profile", err);
+    }
     router.push("/home");
   }
 

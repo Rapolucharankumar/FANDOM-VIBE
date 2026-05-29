@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import { CreatePostModal } from "@/components/feed/create-post-modal";
-import { HomeFeed, useLocalFeed } from "@/components/feed/home-feed";
+import { HomeFeed } from "@/components/feed/home-feed";
 import { AppShell } from "@/components/layout/app-shell";
+import { useFeed } from "@/hooks/use-db";
 
 export function HomeExperience() {
   const [open, setOpen] = useState(false);
-  const { posts, addPost } = useLocalFeed();
+  const { posts, addPost } = useFeed();
 
   return (
     <AppShell onCreatePost={() => setOpen(true)}>

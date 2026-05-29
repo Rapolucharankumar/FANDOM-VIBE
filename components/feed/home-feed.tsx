@@ -6,8 +6,8 @@ import Image from "next/image";
 import { useState } from "react";
 import { PostCard } from "@/components/feed/post-card";
 import { Tag } from "@/components/ui/tag";
-import { currentUser, posts as initialPosts, spaces } from "@/lib/mock-data";
 import type { Post } from "@/types/app";
+import { useAuth, useSpaces } from "@/hooks/use-db";
 
 type HomeFeedProps = {
   onCreatePost: () => void;
@@ -16,6 +16,8 @@ type HomeFeedProps = {
 
 export function HomeFeed({ onCreatePost, posts }: HomeFeedProps) {
   const [activeSpace, setActiveSpace] = useState("all");
+  const { user } = useAuth();
+  const { spaces } = useSpaces();
 
   const filteredPosts = activeSpace === "all" ? posts : posts.filter((post) => post.spaceId === activeSpace);
 
@@ -39,7 +41,7 @@ export function HomeFeed({ onCreatePost, posts }: HomeFeedProps) {
             </div>
             <button
               onClick={onCreatePost}
-              className="focus-ring inline-flex shrink-0 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-violet via-neon to-peach px-5 py-3 text-sm font-extrabold text-white shadow-pink"
+              className="focus-ring inline-flex shrink-0 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-violet via-neon to-peach px-5 py-3 text-sm font-extrabold text-white shadow-pink hover:-translate-y-0.5 transition"
             >
               <Plus className="size-4" />
               New Post
@@ -73,20 +75,20 @@ export function HomeFeed({ onCreatePost, posts }: HomeFeedProps) {
       <aside className="space-y-5 xl:sticky xl:top-8 xl:h-fit">
         <div className="glass-panel rounded-[28px] p-5">
           <div className="flex items-center gap-3">
-            <div className="grid size-11 place-items-center rounded-2xl bg-cyan/15 text-cyan">
+            <div className="grid size-11 place-items-center rounded-2xl bg-cyan/15 text-cyan shadow-glow">
               <Sparkles className="size-5" />
             </div>
             <div>
               <p className="text-sm font-bold text-white">Vibe Match</p>
-              <p className="text-xs text-white/48">92% with today&apos;s feed</p>
+              <p className="text-xs text-white/48">92% alignment target</p>
             </div>
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
-            {currentUser.vibes.map((vibe) => (
+            {user?.vibes?.map((vibe) => (
               <Tag key={vibe} tone="violet">
                 {vibe}
               </Tag>
-            ))}
+            )) || <p className="text-xs text-white/45 italic">No vibes selected.</p>}
           </div>
         </div>
 
@@ -98,10 +100,12 @@ export function HomeFeed({ onCreatePost, posts }: HomeFeedProps) {
           <div className="space-y-3">
             {spaces.slice(0, 4).map((space) => (
               <div key={space.id} className="flex items-center gap-3 rounded-2xl bg-white/6 p-3">
-                <Image src={space.coverImage} alt="" width={96} height={96} className="size-12 rounded-2xl object-cover" />
+                <div className="relative size-12 rounded-2xl overflow-hidden border border-white/10 shrink-0">
+                  <Image src={space.coverImage} alt="" fill sizes="48px" className="object-cover" />
+                </div>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-bold text-white">{space.name}</p>
-                  <p className="text-xs text-white/46">{space.liveNow} live now</p>
+                  <p className="truncate text-sm font-bold text-white leading-none">{space.name}</p>
+                  <p className="text-xs text-white/46 mt-1.5">{space.liveNow} live now</p>
                 </div>
               </div>
             ))}
@@ -120,8 +124,8 @@ export function HomeFeed({ onCreatePost, posts }: HomeFeedProps) {
               ["20%", "fandom"]
             ].map(([value, label]) => (
               <div key={label} className="rounded-2xl border border-white/10 bg-white/7 p-3">
-                <p className="text-lg font-extrabold text-white">{value}</p>
-                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-white/38">{label}</p>
+                <p className="text-lg font-extrabold text-white leading-none">{value}</p>
+                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-white/38 mt-1.5">{label}</p>
               </div>
             ))}
           </div>
@@ -129,24 +133,4 @@ export function HomeFeed({ onCreatePost, posts }: HomeFeedProps) {
       </aside>
     </div>
   );
-}
-
-export function useLocalFeed() {
-  const [posts, setPosts] = useState<Post[]>(initialPosts);
-
-  function addPost(post: Pick<Post, "content" | "imageUrl" | "spaceId" | "moodTag" | "musicLink">) {
-    setPosts((current) => [
-      {
-        ...post,
-        id: `local-post-${Date.now()}`,
-        user: currentUser,
-        createdAt: "now",
-        likes: 0,
-        comments: []
-      },
-      ...current
-    ]);
-  }
-
-  return { posts, addPost };
 }

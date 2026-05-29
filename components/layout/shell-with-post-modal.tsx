@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { CreatePostModal } from "@/components/feed/create-post-modal";
 import { AppShell } from "@/components/layout/app-shell";
-import { useLocalFeed } from "@/components/feed/home-feed";
+import { useFeed } from "@/hooks/use-db";
 
 type ShellWithPostModalProps = {
   children: React.ReactNode;
@@ -11,7 +11,7 @@ type ShellWithPostModalProps = {
 
 export function ShellWithPostModal({ children }: ShellWithPostModalProps) {
   const [open, setOpen] = useState(false);
-  const { addPost } = useLocalFeed();
+  const { addPost } = useFeed();
 
   return (
     <AppShell onCreatePost={() => setOpen(true)}>
