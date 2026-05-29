@@ -7,7 +7,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { clsx } from "clsx";
 import { useAuth, useSignals } from "@/hooks/use-db";
-import { isSupabaseConfigured } from "@/lib/supabase/client";
+import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 
 const navItems = [
   { href: "/home", label: "Home", icon: Home },
