@@ -98,7 +98,7 @@ export function useFeed(spaceId?: string) {
 
     if (isSupabaseConfigured && supabase) {
       const channel = supabase
-        .channel("feed-changes")
+        .channel(`feed-changes-${Math.random().toString(36).substring(2, 9)}`)
         .on(
           "postgres_changes",
           { event: "*", schema: "public", table: "posts" },
@@ -261,7 +261,7 @@ export function useSignals() {
 
     if (isSupabaseConfigured && supabase) {
       const channel = supabase
-        .channel("notifications-realtime")
+        .channel(`notifications-realtime-${Math.random().toString(36).substring(2, 9)}`)
         .on(
           "postgres_changes",
           { event: "INSERT", schema: "public", table: "notifications" },
