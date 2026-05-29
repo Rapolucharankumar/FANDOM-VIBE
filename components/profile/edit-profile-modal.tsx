@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Sparkles, X } from "lucide-react";
+import { Sparkles, X, Loader2 } from "lucide-react";
 import { fandoms as allFandoms, hobbies as allHobbies, vibes as allVibes } from "@/lib/constants";
 import { Tag } from "@/components/ui/tag";
 import type { UserProfile, Fandom, Hobby, VibeTag } from "@/types/app";
+import { dbClient } from "@/lib/db-client";
 
 type EditProfileModalProps = {
   open: boolean;
@@ -23,6 +24,7 @@ export function EditProfileModal({ open, onClose, profile, onSave }: EditProfile
   const [hobbies, setHobbies] = useState<Hobby[]>(profile.hobbies || []);
   const [vibes, setVibes] = useState<VibeTag[]>(profile.vibes || []);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   const toggleFandom = (item: Fandom) => {
     setFandoms(prev => prev.includes(item) ? prev.filter(x => x !== item) : [...prev, item]);
@@ -97,13 +99,45 @@ export function EditProfileModal({ open, onClose, profile, onSave }: EditProfile
                   <img src={profileImage || "https://images.unsplash.com/photo-1502823403499-6ccfcf4fb453?auto=format&fit=crop&w=600&q=80"} alt="" className="size-full object-cover" />
                 </div>
                 <div className="flex-1 space-y-2">
-                  <label className="block text-xs font-bold uppercase tracking-[0.16em] text-white/55">Avatar Image URL</label>
-                  <input
-                    value={profileImage}
-                    onChange={e => setProfileImage(e.target.value)}
-                    className="focus-ring h-11 w-full rounded-xl border border-white/12 bg-white/8 px-4 text-sm text-white placeholder:text-white/35"
-                    placeholder="https://images.unsplash.com/..."
-                  />
+                  <label className="block text-xs font-bold uppercase tracking-[0.16em] text-white/55">Avatar Image</label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      id="avatar-upload"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          try {
+                            setUploading(true);
+                            const url = await dbClient.uploadFile("avatars", file);
+                            setProfileImage(url);
+                          } catch (err) {
+                            console.error("Failed to upload avatar:", err);
+                          } finally {
+                            setUploading(false);
+                          }
+                        }
+                      }}
+                    />
+                    <label
+                      htmlFor="avatar-upload"
+                      className="glass-button focus-ring cursor-pointer inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold transition hover:bg-white/12"
+                    >
+                      {uploading ? (
+                        <>
+                          <Loader2 className="size-3.5 animate-spin" />
+                          Uploading...
+                        </>
+                      ) : (
+                        "Upload File"
+                      )}
+                    </label>
+                    <span className="text-xs text-white/40 truncate max-w-[200px]">
+                      {profileImage ? "File linked" : "No file chosen"}
+                    </span>
+                  </div>
                 </div>
               </div>
 

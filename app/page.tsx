@@ -4,9 +4,12 @@ import { motion } from "framer-motion";
 import { ArrowRight, HeartHandshake, Images, MessageCircle, Music2, Sparkles, UsersRound } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { Tag } from "@/components/ui/tag";
 import { posts, spaces } from "@/lib/mock-data";
+import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 
 const floatingCards = [
   {
@@ -30,6 +33,20 @@ const floatingCards = [
 ];
 
 export default function LandingPage() {
+  const router = useRouter();
+
+  useEffect(() => {
+    async function checkSession() {
+      if (isSupabaseConfigured && supabase) {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          router.replace("/home");
+        }
+      }
+    }
+    checkSession();
+  }, [router]);
+
   return (
     <main className="min-h-screen text-white">
       <section className="relative min-h-[88vh] overflow-hidden px-4 py-6 sm:px-6 lg:px-8">

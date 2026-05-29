@@ -12,9 +12,12 @@ import { useAuth, useSpaces } from "@/hooks/use-db";
 type HomeFeedProps = {
   onCreatePost: () => void;
   posts: Post[];
+  loadMore: () => void;
+  hasMore: boolean;
+  loading: boolean;
 };
 
-export function HomeFeed({ onCreatePost, posts }: HomeFeedProps) {
+export function HomeFeed({ onCreatePost, posts, loadMore, hasMore, loading }: HomeFeedProps) {
   const [activeSpace, setActiveSpace] = useState("all");
   const { user } = useAuth();
   const { spaces } = useSpaces();
@@ -69,6 +72,36 @@ export function HomeFeed({ onCreatePost, posts }: HomeFeedProps) {
           {filteredPosts.map((post) => (
             <PostCard key={post.id} post={post} />
           ))}
+
+          {hasMore && (
+            <div className="flex justify-center pt-3">
+              <button
+                onClick={loadMore}
+                disabled={loading}
+                className="glass-button focus-ring inline-flex items-center justify-center gap-2 rounded-2xl px-6 py-3 text-sm font-bold disabled:opacity-40 disabled:cursor-wait"
+              >
+                {loading ? "Loading older vibes..." : "Load older vibes"}
+              </button>
+            </div>
+          )}
+
+          {!hasMore && filteredPosts.length > 0 && (
+            <p className="text-center text-xs tracking-wider uppercase text-white/34 pt-5">
+              You&apos;ve hit the event horizon.
+            </p>
+          )}
+
+          {filteredPosts.length === 0 && !loading && (
+            <div className="glass-panel text-center rounded-[28px] py-12 px-6">
+              <p className="text-white/60 text-sm">No vibes found in this community yet.</p>
+              <button
+                onClick={onCreatePost}
+                className="mt-4 focus-ring inline-flex items-center justify-center gap-2 rounded-2xl bg-cyan text-ink px-4 py-2 text-xs font-extrabold"
+              >
+                Be the first to post
+              </button>
+            </div>
+          )}
         </div>
       </section>
 

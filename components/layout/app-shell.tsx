@@ -1,11 +1,13 @@
 "use client";
 
-import { Bell, Home, Plus, Sparkles, UserRound, UsersRound, Search, ShieldAlert, Loader2 } from "lucide-react";
+import { Bell, Home, Plus, Sparkles, UserRound, UsersRound, Search, ShieldAlert, Loader2, LogOut } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect } from "react";
 import { clsx } from "clsx";
 import { useAuth, useSignals } from "@/hooks/use-db";
+import { isSupabaseConfigured } from "@/lib/supabase/client";
 
 const navItems = [
   { href: "/home", label: "Home", icon: Home },
@@ -23,8 +25,35 @@ type AppShellProps = {
 
 export function AppShell({ children, onCreatePost }: AppShellProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const { user, loading: authLoading } = useAuth();
   const { unreadCount } = useSignals();
+
+  useEffect(() => {
+    if (!authLoading && isSupabaseConfigured && !user) {
+      router.push("/login");
+    }
+  }, [user, authLoading, router]);
+
+  const handleLogout = async () => {
+    if (isSupabaseConfigured && supabase) {
+      await supabase.auth.signOut();
+    } else {
+      window.localStorage.removeItem("fandom-vibe-current-user-id");
+    }
+    router.push("/login");
+  };
+
+  if (isSupabaseConfigured && authLoading) {
+    return (
+      <div className="grid min-h-screen place-items-center bg-ink">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="size-10 animate-spin text-cyan" />
+          <p className="text-sm font-bold uppercase tracking-[0.24em] text-white/50">resolving gravity...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen pb-24 text-white lg:pb-0">
@@ -86,20 +115,29 @@ export function AppShell({ children, onCreatePost }: AppShellProps) {
             </div>
           ) : (
             <>
-              <div className="flex items-center gap-3">
-                <div className="relative size-12 rounded-2xl overflow-hidden border border-white/10 shrink-0">
-                  <Image
-                    src={user.profileImage}
-                    alt={user.username}
-                    fill
-                    sizes="48px"
-                    className="object-cover"
-                  />
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <div className="relative size-12 rounded-2xl overflow-hidden border border-white/10 shrink-0">
+                    <Image
+                      src={user.profileImage}
+                      alt={user.username}
+                      fill
+                      sizes="48px"
+                      className="object-cover"
+                    />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-bold text-white">{user.username}</p>
+                    <p className="truncate text-xs text-white/50">@{user.handle}</p>
+                  </div>
                 </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-bold text-white">{user.username}</p>
-                  <p className="truncate text-xs text-white/50">@{user.handle}</p>
-                </div>
+                <button
+                  onClick={handleLogout}
+                  className="focus-ring grid size-9 place-items-center rounded-xl bg-white/5 hover:bg-white/12 text-white/60 hover:text-white transition"
+                  title="Log out"
+                >
+                  <LogOut className="size-4" />
+                </button>
               </div>
               <div className="mt-4 rounded-2xl border border-cyan/20 bg-cyan/10 p-3 text-xs leading-5 text-cyan-50">
                 Your strong vibes today: {user.vibes.slice(0, 2).join(" & ") || "Open Explorer"}.
@@ -116,13 +154,23 @@ export function AppShell({ children, onCreatePost }: AppShellProps) {
             <Sparkles className="size-5 text-cyan" />
             Fandom Vibe
           </Link>
-          <button
-            onClick={onCreatePost}
-            className="focus-ring grid size-10 place-items-center rounded-2xl bg-neon text-white shadow-pink"
-            aria-label="Create post"
-          >
-            <Plus className="size-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleLogout}
+              className="focus-ring grid size-10 place-items-center rounded-2xl bg-white/8 border border-white/10 text-white/60 hover:text-white transition"
+              aria-label="Log out"
+              title="Log out"
+            >
+              <LogOut className="size-5" />
+            </button>
+            <button
+              onClick={onCreatePost}
+              className="focus-ring grid size-10 place-items-center rounded-2xl bg-neon text-white shadow-pink"
+              aria-label="Create post"
+            >
+              <Plus className="size-5" />
+            </button>
+          </div>
         </div>
       </header>
 

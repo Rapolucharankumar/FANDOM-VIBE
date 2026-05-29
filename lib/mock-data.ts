@@ -15,7 +15,7 @@ export const currentUser: UserProfile = {
 
 export const spaces: Space[] = [
   {
-    id: "midnight-thoughts",
+    id: "550e8400-e29b-41d4-a716-446655440001",
     name: "Midnight Thoughts",
     description: "Late-night notes, lyrical confessions, and soft chaos after 12.",
     coverImage:
@@ -25,7 +25,7 @@ export const spaces: Space[] = [
     liveNow: 240
   },
   {
-    id: "cozy-cafe",
+    id: "550e8400-e29b-41d4-a716-446655440002",
     name: "Cozy Cafe",
     description: "Warm drinks, reading corners, gentle playlists, and comfort posts.",
     coverImage:
@@ -35,7 +35,7 @@ export const spaces: Space[] = [
     liveNow: 318
   },
   {
-    id: "fashion-room",
+    id: "550e8400-e29b-41d4-a716-446655440003",
     name: "Fashion Room",
     description: "Idol airport looks, streetwear edits, thrift finds, and fit checks.",
     coverImage:
@@ -45,7 +45,7 @@ export const spaces: Space[] = [
     liveNow: 186
   },
   {
-    id: "producer-space",
+    id: "550e8400-e29b-41d4-a716-446655440004",
     name: "Producer Space",
     description: "Beat snippets, desk setups, lyric drafts, and late-session energy.",
     coverImage:
@@ -55,7 +55,7 @@ export const spaces: Space[] = [
     liveNow: 94
   },
   {
-    id: "anime-kdrama",
+    id: "550e8400-e29b-41d4-a716-446655440005",
     name: "Anime & K-Drama Club",
     description: "Watchlists, edits, emotional scenes, and comfort-character devotion.",
     coverImage:
@@ -114,7 +114,7 @@ export const posts: Post[] = [
       "Made a bassline that feels like walking home under violet streetlights after a concert. Saving it for the Producer Space listening thread.",
     imageUrl:
       "https://images.unsplash.com/photo-1598488035139-bdbb2231ce04?auto=format&fit=crop&w=1200&q=80",
-    spaceId: "producer-space",
+    spaceId: "550e8400-e29b-41d4-a716-446655440004",
     moodTag: "Midnight Energy",
     musicLink: "https://open.spotify.com",
     createdAt: "12 min ago",
@@ -135,7 +135,7 @@ export const posts: Post[] = [
       "Cafe corner checklist: iced latte, NewJeans playlist, one chapter finished, and a page of tiny emotional notes.",
     imageUrl:
       "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=1200&q=80",
-    spaceId: "cozy-cafe",
+    spaceId: "550e8400-e29b-41d4-a716-446655440002",
     moodTag: "Cozy Cafe",
     createdAt: "28 min ago",
     likes: 519,
@@ -161,7 +161,7 @@ export const posts: Post[] = [
       "Airport-fit board for tomorrow: silver rings, structured jacket, soft bag, loud shoes. Idol-coded but still wearable.",
     imageUrl:
       "https://images.unsplash.com/photo-1509631179647-0177331693ae?auto=format&fit=crop&w=1200&q=80",
-    spaceId: "fashion-room",
+    spaceId: "550e8400-e29b-41d4-a716-446655440003",
     moodTag: "Streetwear",
     createdAt: "46 min ago",
     likes: 342,
@@ -172,7 +172,7 @@ export const posts: Post[] = [
     user: people[0],
     content:
       "There is a specific kind of belonging that happens when someone understands both your favorite lyric and your favorite weather.",
-    spaceId: "midnight-thoughts",
+    spaceId: "550e8400-e29b-41d4-a716-446655440001",
     moodTag: "Film Aesthetic",
     createdAt: "1 hr ago",
     likes: 811,

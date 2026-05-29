@@ -1,11 +1,12 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { ImagePlus, Link2, MessageSquareText, Sparkles, X } from "lucide-react";
+import { ImagePlus, Link2, MessageSquareText, Sparkles, X, Loader2 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { vibes } from "@/lib/constants";
 import type { Post, VibeTag } from "@/types/app";
 import { useSpaces } from "@/hooks/use-db";
+import { dbClient } from "@/lib/db-client";
 
 type CreatePostModalProps = {
   open: boolean;
@@ -20,6 +21,7 @@ export function CreatePostModal({ open, onClose, onCreate }: CreatePostModalProp
   const [musicLink, setMusicLink] = useState("");
   const [spaceId, setSpaceId] = useState("");
   const [moodTag, setMoodTag] = useState<VibeTag>("Midnight Energy");
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     if (spaces.length > 0 && !spaceId) {
@@ -94,18 +96,50 @@ export function CreatePostModal({ open, onClose, onCreate }: CreatePostModalProp
               </label>
 
               <div className="grid gap-4 sm:grid-cols-2">
-                <label className="block">
+                <div className="block">
                   <span className="mb-2 flex items-center gap-2 text-sm font-bold text-white/78">
                     <ImagePlus className="size-4 text-neon" />
-                    Image URL
+                    Image Attachment
                   </span>
-                  <input
-                    value={imageUrl}
-                    onChange={(event) => setImageUrl(event.target.value)}
-                    placeholder="https://..."
-                    className="focus-ring h-12 w-full rounded-2xl border border-white/12 bg-white/8 px-4 text-sm text-white placeholder:text-white/35"
-                  />
-                </label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      id="post-image-upload"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          try {
+                            setUploading(true);
+                            const url = await dbClient.uploadFile("posts", file);
+                            setImageUrl(url);
+                          } catch (err) {
+                            console.error("Failed to upload post image:", err);
+                          } finally {
+                            setUploading(false);
+                          }
+                        }
+                      }}
+                    />
+                    <label
+                      htmlFor="post-image-upload"
+                      className="glass-button focus-ring cursor-pointer inline-flex h-12 items-center justify-center gap-2 rounded-2xl px-4 text-sm font-bold transition hover:bg-white/12"
+                    >
+                      {uploading ? (
+                        <>
+                          <Loader2 className="size-4 animate-spin text-white" />
+                          Uploading...
+                        </>
+                      ) : (
+                        "Upload Image"
+                      )}
+                    </label>
+                    <span className="text-xs text-white/40 truncate max-w-[150px]">
+                      {imageUrl ? "Image attached" : "No image selected"}
+                    </span>
+                  </div>
+                </div>
                 <label className="block">
                   <span className="mb-2 flex items-center gap-2 text-sm font-bold text-white/78">
                     <Link2 className="size-4 text-peach" />

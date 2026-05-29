@@ -156,9 +156,16 @@ export function AuthPanel({ mode }: AuthPanelProps) {
           </label>
 
           <label className="block">
-            <span className="mb-2 flex items-center gap-2 text-sm font-bold text-white/72">
-              <LockKeyhole className="size-4 text-peach" />
-              Password
+            <span className="mb-2 flex items-center justify-between gap-2 text-sm font-bold text-white/72">
+              <span className="flex items-center gap-2">
+                <LockKeyhole className="size-4 text-peach" />
+                Password
+              </span>
+              {!isSignup && (
+                <Link href="/password-reset" className="text-xs font-semibold text-cyan hover:underline">
+                  Forgot?
+                </Link>
+              )}
             </span>
             <input
               required

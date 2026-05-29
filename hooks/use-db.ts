@@ -42,23 +42,45 @@ export function useAuth() {
   return { user, loading, error, refreshProfile: fetchUser, updateProfile };
 }
 
-// 2. Hook for loading and managing the Feed with Realtime updates
+// 2. Hook for loading and managing the Feed with Realtime updates & Pagination
 export function useFeed(spaceId?: string) {
   const [posts, setPosts] = useState<Post[]>([]);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchFeed = useCallback(async () => {
+  const fetchFeed = useCallback(async (reset: boolean = false) => {
     try {
       setLoading(true);
-      const data = await dbClient.getPosts(spaceId);
-      setPosts(data);
+      const targetPage = reset ? 1 : page;
+      const data = await dbClient.getPosts(spaceId, targetPage, 10);
+      
+      if (reset) {
+        setPosts(data);
+        setPage(2);
+        setHasMore(data.length === 10);
+      } else {
+        setPosts(prev => {
+          const existingIds = new Set(prev.map(p => p.id));
+          const newPosts = data.filter(p => !existingIds.has(p.id));
+          return [...prev, ...newPosts];
+        });
+        setPage(prev => prev + 1);
+        setHasMore(data.length === 10);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load feed");
     } finally {
       setLoading(false);
     }
-  }, [spaceId]);
+  }, [spaceId, page]);
+
+  const loadMore = () => {
+    if (!loading && hasMore) {
+      fetchFeed(false);
+    }
+  };
 
   const addPost = async (post: Pick<Post, "content" | "imageUrl" | "spaceId" | "moodTag" | "musicLink">) => {
     try {
@@ -72,7 +94,7 @@ export function useFeed(spaceId?: string) {
   };
 
   useEffect(() => {
-    fetchFeed();
+    fetchFeed(true);
 
     if (isSupabaseConfigured && supabase) {
       const channel = supabase
@@ -81,7 +103,7 @@ export function useFeed(spaceId?: string) {
           "postgres_changes",
           { event: "*", schema: "public", table: "posts" },
           () => {
-            fetchFeed();
+            fetchFeed(true);
           }
         )
         .subscribe();
@@ -90,9 +112,9 @@ export function useFeed(spaceId?: string) {
         supabase.removeChannel(channel);
       };
     }
-  }, [spaceId, fetchFeed]);
+  }, [spaceId]);
 
-  return { posts, loading, error, addPost, refreshFeed: fetchFeed };
+  return { posts, loading, error, addPost, refreshFeed: () => fetchFeed(true), loadMore, hasMore };
 }
 
 // 3. Hook for interacting with a single Post (likes, saves, comments)
@@ -106,6 +128,11 @@ export function usePostActions(post: Post) {
   const fetchStates = useCallback(async () => {
     try {
       const currentId = await dbClient.getCurrentUserId();
+      if (!currentId) {
+        setLiked(false);
+        setSaved(false);
+        return;
+      }
       const isL = await dbClient.isPostLiked(post.id, currentId);
       const isS = await dbClient.isPostSaved(post.id, currentId);
       setLiked(isL);
@@ -185,7 +212,7 @@ export function useFollow(targetUserId?: string) {
     try {
       const isF = await dbClient.toggleFollow(targetUserId);
       setFollowing(isF);
-      loadFollowStats(); // Refresh lists
+      loadFollowStats();
     } catch (err) {
       console.error(err);
     }
@@ -198,7 +225,7 @@ export function useFollow(targetUserId?: string) {
   return { following, followers, followingList, toggleFollow, loadFollowStats, loading };
 }
 
-// 5. Hook for Alerts / Signals Hub with Realtime support
+// 5. Hook for Alerts / Signals Hub with Realtime support (listening to notifications)
 export function useSignals() {
   const [signals, setSignals] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -233,12 +260,11 @@ export function useSignals() {
     fetchSignals();
 
     if (isSupabaseConfigured && supabase) {
-      // Realtime push
       const channel = supabase
-        .channel("signals-realtime")
+        .channel("notifications-realtime")
         .on(
           "postgres_changes",
-          { event: "INSERT", schema: "public", table: "signals" },
+          { event: "INSERT", schema: "public", table: "notifications" },
           () => {
             fetchSignals();
           }
@@ -304,7 +330,7 @@ export function useSearch(query: string) {
       } finally {
         setLoading(false);
       }
-    }, 300); // Debounce
+    }, 300);
 
     return () => clearTimeout(delayDebounce);
   }, [query]);
@@ -359,4 +385,51 @@ export function useSpaces() {
   }, [fetchSpaces]);
 
   return { spaces, loading, error, refreshSpaces: fetchSpaces };
+}
+
+// 10. Hook for Space Membership Join/Leave [NEW]
+export function useSpaceMembership(spaceId: string) {
+  const [isMember, setIsMember] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  const checkMembership = useCallback(async () => {
+    if (!spaceId) return;
+    try {
+      setLoading(true);
+      const status = await dbClient.isSpaceMember(spaceId);
+      setIsMember(status);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }, [spaceId]);
+
+  const joinSpace = async () => {
+    try {
+      const success = await dbClient.joinSpace(spaceId);
+      if (success) setIsMember(true);
+      return success;
+    } catch (err) {
+      console.error(err);
+      throw err;
+    }
+  };
+
+  const leaveSpace = async () => {
+    try {
+      const success = await dbClient.leaveSpace(spaceId);
+      if (success) setIsMember(false);
+      return success;
+    } catch (err) {
+      console.error(err);
+      throw err;
+    }
+  };
+
+  useEffect(() => {
+    checkMembership();
+  }, [spaceId, checkMembership]);
+
+  return { isMember, loading, joinSpace, leaveSpace, refreshMembership: checkMembership };
 }

@@ -3,7 +3,7 @@ import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 import { currentUser as mockCurrentUser, people as mockPeople, posts as mockPosts, spaces as mockSpaces } from "@/lib/mock-data";
 import type { UserProfile, Post, Comment, Space, VibeTag, Fandom, Hobby } from "@/types/app";
 
-// LocalStorage key constants
+// LocalStorage key constants (only used in offline demo mode)
 const KEYS = {
   USERS: "fandom-vibe-users",
   POSTS: "fandom-vibe-posts",
@@ -43,7 +43,6 @@ export function initLocalDB() {
     window.localStorage.setItem(KEYS.USERS, JSON.stringify(mockPeople));
   }
   if (!window.localStorage.getItem(KEYS.POSTS)) {
-    // Map mock posts to a schema-like format
     const localPosts = mockPosts.map(p => ({
       id: p.id,
       user_id: p.user.id,
@@ -52,12 +51,11 @@ export function initLocalDB() {
       space_id: p.spaceId,
       mood_tag: p.moodTag,
       music_link: p.musicLink,
-      created_at: new Date(Date.now() - 1000 * 60 * 60).toISOString() // 1 hour ago
+      created_at: new Date(Date.now() - 1000 * 60 * 60).toISOString()
     }));
     window.localStorage.setItem(KEYS.POSTS, JSON.stringify(localPosts));
   }
   if (!window.localStorage.getItem(KEYS.LIKES)) {
-    // Seed initial likes
     const initialLikes = mockPosts.map(p => ({
       user_id: "user-002",
       post_id: p.id
@@ -65,7 +63,6 @@ export function initLocalDB() {
     window.localStorage.setItem(KEYS.LIKES, JSON.stringify(initialLikes));
   }
   if (!window.localStorage.getItem(KEYS.FOLLOWS)) {
-    // Seed initial follows
     const initialFollows = [
       { follower_id: "user-001", following_id: "user-002" },
       { follower_id: "user-001", following_id: "user-003" },
@@ -111,82 +108,106 @@ export function initLocalDB() {
   }
 }
 
+// Helper to translate database profiles to client-side UserProfile types
+function mapProfile(p: any): UserProfile {
+  return {
+    id: p.id,
+    username: p.display_name || p.username || "Dreamer",
+    handle: p.username,
+    profileImage: p.avatar_url || "https://images.unsplash.com/photo-1502823403499-6ccfcf4fb453?auto=format&fit=crop&w=600&q=80",
+    bio: p.bio || "",
+    fandoms: (p.fandoms as Fandom[]) || [],
+    hobbies: (p.hobbies as Hobby[]) || [],
+    vibes: (p.aesthetics as VibeTag[]) || [],
+    badges: p.badges || ["Explorer"]
+  };
+}
+
 // ----------------------------------------------------
 // Unified DB Interface Implementation
 // ----------------------------------------------------
-
 export const dbClient = {
+  // --- FILE UPLOADS (Supabase Storage) ---
+  async uploadFile(bucket: string, file: File): Promise<string> {
+    if (!isSupabaseConfigured || !supabase) {
+      throw new Error("Supabase is not configured.");
+    }
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("Unauthorized to upload files.");
+
+    const fileExt = file.name.split(".").pop();
+    const fileName = `${user.id}/${Date.now()}_${Math.random().toString(36).substring(2, 6)}.${fileExt}`;
+    const filePath = `${fileName}`;
+
+    const { error } = await supabase.storage
+      .from(bucket)
+      .upload(filePath, file, {
+        cacheControl: "3600",
+        upsert: true
+      });
+
+    if (error) throw error;
+
+    const { data: { publicUrl } } = supabase.storage
+      .from(bucket)
+      .getPublicUrl(filePath);
+
+    return publicUrl;
+  },
+
   // --- AUTH & PROFILE ---
-  async getCurrentUserId(): Promise<string> {
+  async getCurrentUserId(): Promise<string | null> {
     if (isSupabaseConfigured && supabase) {
       const { data: { user } } = await supabase.auth.getUser();
-      return user?.id || "user-001";
+      return user?.id || null;
     }
     initLocalDB();
     return getLocal<string>(KEYS.CURRENT_USER_ID, "user-001");
   },
 
-  async getCurrentUser(): Promise<UserProfile> {
+  async getCurrentUser(): Promise<UserProfile | null> {
     const currentId = await this.getCurrentUserId();
+    if (!currentId) return null;
+
     if (isSupabaseConfigured && supabase) {
-      // Use maybeSingle to prevent exceptions if row is missing
       const { data, error } = await supabase
-        .from("users")
+        .from("profiles")
         .select("*")
         .eq("id", currentId)
         .maybeSingle();
       
       if (!error && data) {
-        return {
-          id: data.id,
-          username: data.username,
-          handle: data.handle || data.username.toLowerCase().replace(/\s/g, ""),
-          bio: data.bio || "",
-          profileImage: data.profile_image || "https://images.unsplash.com/photo-1502823403499-6ccfcf4fb453?auto=format&fit=crop&w=600&q=80",
-          fandoms: (data.fandoms as Fandom[]) || [],
-          hobbies: (data.hobbies as Hobby[]) || [],
-          vibes: (data.vibes as VibeTag[]) || [],
-          badges: ["First Light"]
-        };
+        return mapProfile(data);
       } else {
-        // Self-healing: if public profile is missing in users table, insert it!
+        // Self-healing: if auth user exists but public profile row is missing
         const { data: { user: authUser } } = await supabase.auth.getUser();
         if (authUser && authUser.id === currentId) {
           const fallbackUsername = authUser.user_metadata?.username || authUser.email?.split("@")[0] || "Dreamer";
           const fallbackHandle = (fallbackUsername.toLowerCase().replace(/\s/g, "") + "_" + authUser.id.substring(0, 4)).slice(0, 20);
           
           const { data: newProfile, error: insertError } = await supabase
-            .from("users")
+            .from("profiles")
             .insert({
               id: currentId,
-              username: fallbackUsername,
-              handle: fallbackHandle,
-              profile_image: "https://images.unsplash.com/photo-1502823403499-6ccfcf4fb453?auto=format&fit=crop&w=600&q=80",
+              username: fallbackHandle,
+              display_name: fallbackUsername,
+              avatar_url: "https://images.unsplash.com/photo-1502823403499-6ccfcf4fb453?auto=format&fit=crop&w=600&q=80",
               bio: "Creative explorer. Searching for late night vibes and aesthetic connections."
             })
             .select()
             .single();
             
           if (!insertError && newProfile) {
-            return {
-              id: newProfile.id,
-              username: newProfile.username,
-              handle: newProfile.handle || newProfile.username.toLowerCase().replace(/\s/g, ""),
-              bio: newProfile.bio || "",
-              profileImage: newProfile.profile_image || "",
-              fandoms: (newProfile.fandoms as Fandom[]) || [],
-              hobbies: (newProfile.hobbies as Hobby[]) || [],
-              vibes: (newProfile.vibes as VibeTag[]) || [],
-              badges: ["First Light"]
-            };
+            return mapProfile(newProfile);
           }
         }
       }
+      return null;
     }
+
     // Fallback LocalStorage
     initLocalDB();
     const users = getLocal<UserProfile[]>(KEYS.USERS, mockPeople);
-    // Sync demographic onboarding keys if user matches demo auth
     const demoAuth = getLocal<{ email: string, username: string } | null>("fandom-vibe-demo-user", null);
     const onboardingData = getLocal<Record<string, string[]> | null>("fandom-vibe-onboarding", null);
 
@@ -212,22 +233,12 @@ export const dbClient = {
   async getUserProfile(userId: string): Promise<UserProfile | null> {
     if (isSupabaseConfigured && supabase) {
       const { data, error } = await supabase
-        .from("users")
+        .from("profiles")
         .select("*")
         .eq("id", userId)
         .single();
       if (!error && data) {
-        return {
-          id: data.id,
-          username: data.username,
-          handle: data.handle || data.username.toLowerCase().replace(/\s/g, ""),
-          bio: data.bio || "",
-          profileImage: data.profile_image || "https://images.unsplash.com/photo-1502823403499-6ccfcf4fb453?auto=format&fit=crop&w=600&q=80",
-          fandoms: (data.fandoms as Fandom[]) || [],
-          hobbies: (data.hobbies as Hobby[]) || [],
-          vibes: (data.vibes as VibeTag[]) || [],
-          badges: ["Explorer"]
-        };
+        return mapProfile(data);
       }
       return null;
     }
@@ -239,33 +250,25 @@ export const dbClient = {
   async updateProfile(userId: string, updates: Partial<UserProfile>): Promise<UserProfile> {
     if (isSupabaseConfigured && supabase) {
       const dbUpdates: Record<string, any> = {};
-      if (updates.username) dbUpdates.username = updates.username;
-      if (updates.handle) dbUpdates.handle = updates.handle;
+      if (updates.username) dbUpdates.display_name = updates.username;
+      if (updates.handle) dbUpdates.username = updates.handle;
       if (updates.bio) dbUpdates.bio = updates.bio;
-      if (updates.profileImage) dbUpdates.profile_image = updates.profileImage;
+      if (updates.profileImage) dbUpdates.avatar_url = updates.profileImage;
       if (updates.fandoms) dbUpdates.fandoms = updates.fandoms;
       if (updates.hobbies) dbUpdates.hobbies = updates.hobbies;
-      if (updates.vibes) dbUpdates.vibes = updates.vibes;
+      if (updates.vibes) dbUpdates.aesthetics = updates.vibes;
 
       const { data, error } = await supabase
-        .from("users")
+        .from("profiles")
         .update(dbUpdates)
         .eq("id", userId)
         .select()
         .single();
+      
       if (error) throw error;
-      return {
-        id: data.id,
-        username: data.username,
-        handle: data.handle || data.username.toLowerCase().replace(/\s/g, ""),
-        bio: data.bio || "",
-        profileImage: data.profile_image || "https://images.unsplash.com/photo-1502823403499-6ccfcf4fb453?auto=format&fit=crop&w=600&q=80",
-        fandoms: (data.fandoms as Fandom[]) || [],
-        hobbies: (data.hobbies as Hobby[]) || [],
-        vibes: (data.vibes as VibeTag[]) || [],
-        badges: ["Vibe Shifter"]
-      };
+      return mapProfile(data);
     }
+
     initLocalDB();
     const users = getLocal<UserProfile[]>(KEYS.USERS, mockPeople);
     const index = users.findIndex(u => u.id === userId);
@@ -277,16 +280,16 @@ export const dbClient = {
   },
 
   // --- POSTS ---
-  async getPosts(spaceId?: string): Promise<Post[]> {
+  async getPosts(spaceId?: string, page: number = 1, limit: number = 10): Promise<Post[]> {
     if (isSupabaseConfigured && supabase) {
       let query = supabase
         .from("posts")
         .select(`
           *,
-          user:users(*),
+          user:profiles(*),
           comments(
             *,
-            user:users(*)
+            user:profiles(*)
           ),
           likes(user_id)
         `)
@@ -296,40 +299,35 @@ export const dbClient = {
         query = query.eq("space_id", spaceId);
       }
 
+      // Pagination
+      const from = (page - 1) * limit;
+      const to = from + limit - 1;
+      query = query.range(from, to);
+
       const { data, error } = await query;
-      if (!error && data) {
-        return data.map((p: any) => ({
-          id: p.id,
-          content: p.content || "",
-          imageUrl: p.image_url,
-          spaceId: p.space_id,
-          moodTag: p.mood_tag as VibeTag,
-          musicLink: p.music_link,
-          createdAt: new Date(p.created_at).toLocaleDateString(),
-          likes: p.likes ? p.likes.length : 0,
+      if (error) throw error;
+
+      return (data || []).map((p: any) => ({
+        id: p.id,
+        content: p.content || "",
+        imageUrl: p.image_url,
+        spaceId: p.space_id,
+        moodTag: p.mood_tag as VibeTag,
+        musicLink: p.music_link,
+        createdAt: new Date(p.created_at).toLocaleDateString(),
+        likes: p.likes ? p.likes.length : 0,
+        user: mapProfile(p.user),
+        comments: (p.comments || []).map((c: any) => ({
+          id: c.id,
+          content: c.content,
+          createdAt: new Date(c.created_at).toLocaleDateString(),
           user: {
-            id: p.user?.id,
-            username: p.user?.username || "Unknown",
-            handle: p.user?.handle || p.user?.username?.toLowerCase().replace(/\s/g, "") || "unknown",
-            bio: p.user?.bio || "",
-            profileImage: p.user?.profile_image || "https://images.unsplash.com/photo-1502823403499-6ccfcf4fb453?auto=format&fit=crop&w=600&q=80",
-            fandoms: p.user?.fandoms || [],
-            hobbies: p.user?.hobbies || [],
-            vibes: p.user?.vibes || [],
-            badges: ["Curator"]
-          },
-          comments: (p.comments || []).map((c: any) => ({
-            id: c.id,
-            content: c.content,
-            createdAt: new Date(c.created_at).toLocaleDateString(),
-            user: {
-              username: c.user?.username || "Anonymous",
-              handle: c.user?.handle || c.user?.username?.toLowerCase().replace(/\s/g, "") || "anonymous",
-              profileImage: c.user?.profile_image || "https://images.unsplash.com/photo-1502823403499-6ccfcf4fb453?auto=format&fit=crop&w=600&q=80"
-            }
-          }))
-        }));
-      }
+            username: c.user?.display_name || "Anonymous",
+            handle: c.user?.username || "anonymous",
+            profileImage: c.user?.avatar_url || ""
+          }
+        }))
+      }));
     }
 
     // Local Storage Mock Mode
@@ -337,7 +335,6 @@ export const dbClient = {
     const localPosts = getLocal<any[]>(KEYS.POSTS, []);
     const localLikes = getLocal<any[]>(KEYS.LIKES, []);
     const localUsers = getLocal<UserProfile[]>(KEYS.USERS, []);
-    // Map each post
     let resolvedPosts: Post[] = localPosts.map(p => {
       const author = localUsers.find(u => u.id === p.user_id) || mockCurrentUser;
       const likesCount = localLikes.filter(l => l.post_id === p.id).length;
@@ -350,7 +347,7 @@ export const dbClient = {
         musicLink: p.music_link,
         createdAt: "recently",
         likes: likesCount,
-        comments: [], // Comments loaded/updated as needed
+        comments: [],
         user: author
       };
     });
@@ -358,11 +355,14 @@ export const dbClient = {
     if (spaceId && spaceId !== "all") {
       resolvedPosts = resolvedPosts.filter(p => p.spaceId === spaceId);
     }
-    return resolvedPosts.reverse(); // Newest first
+    // Simple pagination mock
+    return resolvedPosts.reverse().slice((page - 1) * limit, page * limit);
   },
 
   async createPost(post: Pick<Post, "content" | "imageUrl" | "spaceId" | "moodTag" | "musicLink">): Promise<Post> {
     const currentId = await this.getCurrentUserId();
+    if (!currentId) throw new Error("User must be logged in to create a post.");
+
     if (isSupabaseConfigured && supabase) {
       const { data, error } = await supabase
         .from("posts")
@@ -376,24 +376,24 @@ export const dbClient = {
         })
         .select(`
           *,
-          user:users(*)
+          user:profiles(*)
         `)
         .single();
+      
       if (error) throw error;
 
-      // Automatically check matches to post notification/signal if matching other users (Feature 3)
+      // Create a notification for other matching vibe profiles (Feature 3 vibe matches notification)
       const currentUser = await this.getCurrentUser();
-      const vibeMatches = await this.getVibeMatches(currentId);
-      for (const match of vibeMatches) {
-        if (match.percentage >= 80 && match.profile.vibes.includes(post.moodTag)) {
-          await this.createSignal(
-            match.profile.id,
-            currentId,
-            "new_post_match",
-            `A new post matches your ${post.moodTag} mood!`,
-            `${currentUser.username} shared a post: "${post.content.slice(0, 30)}..."`,
-            `/profile/${currentId}`
-          );
+      if (currentUser) {
+        const vibeMatches = await this.getVibeMatches(currentId);
+        for (const match of vibeMatches) {
+          if (match.percentage >= 80 && match.profile.vibes.includes(post.moodTag)) {
+            await this.createSignal(
+              match.profile.id,
+              "space_activity",
+              `${currentUser.username} shared a post matching your ${post.moodTag} vibe: "${post.content.slice(0, 30)}..."`
+            );
+          }
         }
       }
 
@@ -407,17 +407,7 @@ export const dbClient = {
         createdAt: "now",
         likes: 0,
         comments: [],
-        user: {
-          id: data.user.id,
-          username: data.user.username,
-          handle: data.user.handle || data.user.username.toLowerCase().replace(/\s/g, ""),
-          bio: data.user.bio || "",
-          profileImage: data.user.profile_image || "",
-          fandoms: data.user.fandoms || [],
-          hobbies: data.user.hobbies || [],
-          vibes: data.user.vibes || [],
-          badges: ["First Light"]
-        }
+        user: mapProfile(data.user)
       };
     }
 
@@ -437,21 +427,6 @@ export const dbClient = {
     setLocal(KEYS.POSTS, localPosts);
 
     const me = await this.getCurrentUser();
-    // Simulate overlap joins / new post matched signals
-    const matches = await this.getVibeMatches(currentId);
-    for (const match of matches) {
-      if (match.percentage >= 80 && match.profile.vibes.includes(post.moodTag)) {
-        await this.createSignal(
-          match.profile.id,
-          currentId,
-          "new_post_match",
-          `A new post matches your ${post.moodTag} mood!`,
-          `${me.username} shared a post: "${post.content.slice(0, 30)}..."`,
-          `/profile/${currentId}`
-        );
-      }
-    }
-
     return {
       id: newPostRaw.id,
       content: newPostRaw.content,
@@ -462,7 +437,7 @@ export const dbClient = {
       createdAt: "now",
       likes: 0,
       comments: [],
-      user: me
+      user: me!
     };
   },
 
@@ -473,25 +448,114 @@ export const dbClient = {
         .from("spaces")
         .select("*")
         .order("name", { ascending: true });
-      if (!error && data) {
-        return data.map((s: any) => ({
+      
+      if (error) throw error;
+
+      // Self-healing database seeding: if spaces table returns empty, seed default spaces from client-side!
+      if (!data || data.length === 0) {
+        const defaultSpaces = mockSpaces.map(s => ({
           id: s.id,
           name: s.name,
           description: s.description,
-          coverImage: s.cover_image || "https://images.unsplash.com/photo-1511081692775-05d0f180a065?auto=format&fit=crop&w=1200&q=80",
-          vibe: (s.vibe || "Minimal") as VibeTag,
-          members: "10k",
-          liveNow: 120
+          cover_image: s.coverImage,
+          vibe: s.vibe
         }));
+
+        const { data: seededData, error: seedError } = await supabase
+          .from("spaces")
+          .insert(defaultSpaces)
+          .select();
+        
+        if (!seedError && seededData) {
+          return seededData.map((s: any) => ({
+            id: s.id,
+            name: s.name,
+            description: s.description,
+            coverImage: s.cover_image || "",
+            vibe: (s.vibe || "Minimal") as VibeTag,
+            members: "10k",
+            liveNow: 120
+          }));
+        }
       }
+
+      return data.map((s: any) => ({
+        id: s.id,
+        name: s.name,
+        description: s.description,
+        coverImage: s.cover_image || "https://images.unsplash.com/photo-1511081692775-05d0f180a065?auto=format&fit=crop&w=1200&q=80",
+        vibe: (s.vibe || "Minimal") as VibeTag,
+        members: "10k", // Hardcoded indicators preserved for visual layouts
+        liveNow: 120
+      }));
     }
     initLocalDB();
     return getLocal<Space[]>("fandom-vibe-spaces", mockSpaces);
   },
 
+  // --- SPACE MEMBERSHIP (Join/Leave) ---
+  async joinSpace(spaceId: string): Promise<boolean> {
+    const currentId = await this.getCurrentUserId();
+    if (!currentId) throw new Error("Must be logged in to join spaces.");
+
+    if (isSupabaseConfigured && supabase) {
+      const { error } = await supabase
+        .from("space_members")
+        .insert({ space_id: spaceId, user_id: currentId });
+      if (error) throw error;
+
+      // Log space activity notification
+      const space = (await this.getSpaces()).find(s => s.id === spaceId);
+      const user = await this.getCurrentUser();
+      if (space && user) {
+        await this.createSignal(
+          currentId,
+          "space_activity",
+          `You joined the ${space.name} space. Let's vibing!`
+        );
+      }
+      return true;
+    }
+    return true;
+  },
+
+  async leaveSpace(spaceId: string): Promise<boolean> {
+    const currentId = await this.getCurrentUserId();
+    if (!currentId) throw new Error("Must be logged in to leave spaces.");
+
+    if (isSupabaseConfigured && supabase) {
+      const { error } = await supabase
+        .from("space_members")
+        .delete()
+        .eq("space_id", spaceId)
+        .eq("user_id", currentId);
+      if (error) throw error;
+      return true;
+    }
+    return true;
+  },
+
+  async isSpaceMember(spaceId: string): Promise<boolean> {
+    const currentId = await this.getCurrentUserId();
+    if (!currentId) return false;
+
+    if (isSupabaseConfigured && supabase) {
+      const { data, error } = await supabase
+        .from("space_members")
+        .select("space_id")
+        .eq("space_id", spaceId)
+        .eq("user_id", currentId)
+        .maybeSingle();
+      return !error && !!data;
+    }
+    return true;
+  },
+
   // --- LIKES ---
   async toggleLike(postId: string): Promise<boolean> {
     const currentId = await this.getCurrentUserId();
+    if (!currentId) throw new Error("Must be logged in to like posts.");
+
     if (isSupabaseConfigured && supabase) {
       const { data: existing } = await supabase
         .from("likes")
@@ -501,12 +565,14 @@ export const dbClient = {
         .maybeSingle();
 
       if (existing) {
-        await supabase.from("likes").delete().eq("id", existing.id);
+        const { error } = await supabase.from("likes").delete().eq("id", existing.id);
+        if (error) throw error;
         return false;
       } else {
-        await supabase.from("likes").insert({ user_id: currentId, post_id: postId });
+        const { error } = await supabase.from("likes").insert({ user_id: currentId, post_id: postId });
+        if (error) throw error;
         
-        // Trigger alert signal to author
+        // Trigger alert notification to author
         const { data: post } = await supabase
           .from("posts")
           .select("user_id, content")
@@ -515,14 +581,13 @@ export const dbClient = {
 
         if (post && post.user_id !== currentId) {
           const me = await this.getCurrentUser();
-          await this.createSignal(
-            post.user_id,
-            currentId,
-            "like",
-            `${me.username} liked your post.`,
-            post.content ? `"${post.content.slice(0, 45)}..."` : "Shared an image inspiration.",
-            `/profile`
-          );
+          if (me) {
+            await this.createSignal(
+              post.user_id,
+              "like",
+              `${me.username} liked your post: "${post.content ? post.content.slice(0, 30) : 'Image'}"`
+            );
+          }
         }
         return true;
       }
@@ -538,27 +603,14 @@ export const dbClient = {
     } else {
       likes.push({ user_id: currentId, post_id: postId });
       setLocal(KEYS.LIKES, likes);
-
-      // Signal trigger simulation
-      const posts = getLocal<any[]>(KEYS.POSTS, []);
-      const targetPost = posts.find(p => p.id === postId);
-      if (targetPost && targetPost.user_id !== currentId) {
-        const me = await this.getCurrentUser();
-        await this.createSignal(
-          targetPost.user_id,
-          currentId,
-          "like",
-          `${me.username} liked your post.`,
-          targetPost.content ? `"${targetPost.content.slice(0, 45)}..."` : "Shared an image inspiration.",
-          `/profile`
-        );
-      }
       return true;
     }
   },
 
-  async isPostLiked(postId: string): Promise<boolean> {
-    const currentId = await this.getCurrentUserId();
+  async isPostLiked(postId: string, currentUserId?: string): Promise<boolean> {
+    const currentId = currentUserId || await this.getCurrentUserId();
+    if (!currentId) return false;
+
     if (isSupabaseConfigured && supabase) {
       const { data, error } = await supabase
         .from("likes")
@@ -576,7 +628,9 @@ export const dbClient = {
   // --- COMMENTS ---
   async addComment(postId: string, content: string): Promise<Comment> {
     const currentId = await this.getCurrentUserId();
+    if (!currentId) throw new Error("Must be logged in to comment.");
     const me = await this.getCurrentUser();
+    if (!me) throw new Error("Profile not loaded.");
     
     if (isSupabaseConfigured && supabase) {
       const { data, error } = await supabase
@@ -588,9 +642,10 @@ export const dbClient = {
         })
         .select()
         .single();
+      
       if (error) throw error;
 
-      // Trigger comment notification signal to author
+      // Trigger comment notification to author
       const { data: post } = await supabase
         .from("posts")
         .select("user_id, content")
@@ -600,11 +655,8 @@ export const dbClient = {
       if (post && post.user_id !== currentId) {
         await this.createSignal(
           post.user_id,
-          currentId,
           "comment",
-          `${me.username} commented: "${content.slice(0, 30)}..."`,
-          post.content ? `Post: "${post.content.slice(0, 30)}..."` : "On your image post.",
-          `/profile`
+          `${me.username} commented: "${content.slice(0, 30)}..." on your post.`
         );
       }
 
@@ -621,22 +673,6 @@ export const dbClient = {
     }
 
     initLocalDB();
-    // Simulate comment appending directly inside Post list for quick mocks
-    const localPosts = getLocal<any[]>(KEYS.POSTS, []);
-    
-    // In local-storage mock database, we also simulate triggers
-    const targetPost = localPosts.find(p => p.id === postId);
-    if (targetPost && targetPost.user_id !== currentId) {
-      await this.createSignal(
-        targetPost.user_id,
-        currentId,
-        "comment",
-        `${me.username} commented: "${content.slice(0, 30)}..."`,
-        targetPost.content ? `Post: "${targetPost.content.slice(0, 30)}..."` : "On your image post.",
-        `/profile`
-      );
-    }
-
     return {
       id: `comment-${Date.now()}`,
       content,
@@ -652,6 +688,8 @@ export const dbClient = {
   // --- SAVED POSTS ---
   async toggleSavePost(postId: string): Promise<boolean> {
     const currentId = await this.getCurrentUserId();
+    if (!currentId) throw new Error("Must be logged in to save posts.");
+
     if (isSupabaseConfigured && supabase) {
       const { data: existing } = await supabase
         .from("saved_posts")
@@ -661,10 +699,12 @@ export const dbClient = {
         .maybeSingle();
 
       if (existing) {
-        await supabase.from("saved_posts").delete().eq("user_id", currentId).eq("post_id", postId);
+        const { error } = await supabase.from("saved_posts").delete().eq("user_id", currentId).eq("post_id", postId);
+        if (error) throw error;
         return false;
       } else {
-        await supabase.from("saved_posts").insert({ user_id: currentId, post_id: postId });
+        const { error } = await supabase.from("saved_posts").insert({ user_id: currentId, post_id: postId });
+        if (error) throw error;
         return true;
       }
     }
@@ -683,8 +723,10 @@ export const dbClient = {
     }
   },
 
-  async isPostSaved(postId: string): Promise<boolean> {
-    const currentId = await this.getCurrentUserId();
+  async isPostSaved(postId: string, currentUserId?: string): Promise<boolean> {
+    const currentId = currentUserId || await this.getCurrentUserId();
+    if (!currentId) return false;
+
     if (isSupabaseConfigured && supabase) {
       const { data, error } = await supabase
         .from("saved_posts")
@@ -701,58 +743,50 @@ export const dbClient = {
 
   async getSavedPosts(): Promise<Post[]> {
     const currentId = await this.getCurrentUserId();
+    if (!currentId) return [];
+
     if (isSupabaseConfigured && supabase) {
       const { data, error } = await supabase
         .from("saved_posts")
         .select(`
           post:posts(
             *,
-            user:users(*),
+            user:profiles(*),
             comments(
               *,
-              user:users(*)
+              user:profiles(*)
             ),
             likes(user_id)
           )
         `)
         .eq("user_id", currentId);
 
-      if (!error && data) {
-        return data.map((row: any) => {
-          const p = row.post;
-          return {
-            id: p.id,
-            content: p.content || "",
-            imageUrl: p.image_url,
-            spaceId: p.space_id,
-            moodTag: p.mood_tag as VibeTag,
-            musicLink: p.music_link,
-            createdAt: new Date(p.created_at).toLocaleDateString(),
-            likes: p.likes ? p.likes.length : 0,
+      if (error) throw error;
+
+      return (data || []).map((row: any) => {
+        const p = row.post;
+        return {
+          id: p.id,
+          content: p.content || "",
+          imageUrl: p.image_url,
+          spaceId: p.space_id,
+          moodTag: p.mood_tag as VibeTag,
+          musicLink: p.music_link,
+          createdAt: new Date(p.created_at).toLocaleDateString(),
+          likes: p.likes ? p.likes.length : 0,
+          user: mapProfile(p.user),
+          comments: (p.comments || []).map((c: any) => ({
+            id: c.id,
+            content: c.content,
+            createdAt: new Date(c.created_at).toLocaleDateString(),
             user: {
-              id: p.user.id,
-              username: p.user.username,
-              handle: p.user.handle || p.user.username.toLowerCase().replace(/\s/g, ""),
-              bio: p.user.bio || "",
-              profileImage: p.user.profile_image || "",
-              fandoms: p.user.fandoms || [],
-              hobbies: p.user.hobbies || [],
-              vibes: p.user.vibes || [],
-              badges: ["Collector"]
-            },
-            comments: (p.comments || []).map((c: any) => ({
-              id: c.id,
-              content: c.content,
-              createdAt: new Date(c.created_at).toLocaleDateString(),
-              user: {
-                username: c.user?.username || "Anonymous",
-                handle: c.user?.handle || c.user?.username?.toLowerCase().replace(/\s/g, "") || "anonymous",
-                profileImage: c.user?.profile_image || ""
-              }
-            }))
-          };
-        });
-      }
+              username: c.user?.display_name || "Anonymous",
+              handle: c.user?.username || "anonymous",
+              profileImage: c.user?.avatar_url || ""
+            }
+          }))
+        };
+      });
     }
 
     initLocalDB();
@@ -765,7 +799,7 @@ export const dbClient = {
   // --- FOLLOWS ---
   async toggleFollow(targetUserId: string): Promise<boolean> {
     const currentId = await this.getCurrentUserId();
-    if (currentId === targetUserId) return false;
+    if (!currentId || currentId === targetUserId) return false;
 
     if (isSupabaseConfigured && supabase) {
       const { data: existing } = await supabase
@@ -776,20 +810,22 @@ export const dbClient = {
         .maybeSingle();
 
       if (existing) {
-        await supabase.from("follows").delete().eq("follower_id", currentId).eq("following_id", targetUserId);
+        const { error } = await supabase.from("follows").delete().eq("follower_id", currentId).eq("following_id", targetUserId);
+        if (error) throw error;
         return false;
       } else {
-        await supabase.from("follows").insert({ follower_id: currentId, following_id: targetUserId });
+        const { error } = await supabase.from("follows").insert({ follower_id: currentId, following_id: targetUserId });
+        if (error) throw error;
+        
         // Signal follow alert
         const me = await this.getCurrentUser();
-        await this.createSignal(
-          targetUserId,
-          currentId,
-          "follow",
-          `${me.username} followed your updates.`,
-          `Check out their passport and overlapping match!`,
-          `/profile/${currentId}`
-        );
+        if (me) {
+          await this.createSignal(
+            targetUserId,
+            "follow",
+            `${me.username} followed you. Check out their resonance overlaps!`
+          );
+        }
         return true;
       }
     }
@@ -804,21 +840,14 @@ export const dbClient = {
     } else {
       follows.push({ follower_id: currentId, following_id: targetUserId });
       setLocal(KEYS.FOLLOWS, follows);
-      const me = await this.getCurrentUser();
-      await this.createSignal(
-        targetUserId,
-        currentId,
-        "follow",
-        `${me.username} followed your updates.`,
-        `Check out their passport and overlapping match!`,
-        `/profile/${currentId}`
-      );
       return true;
     }
   },
 
   async isFollowing(targetUserId: string): Promise<boolean> {
     const currentId = await this.getCurrentUserId();
+    if (!currentId) return false;
+
     if (isSupabaseConfigured && supabase) {
       const { data, error } = await supabase
         .from("follows")
@@ -838,23 +867,13 @@ export const dbClient = {
       const { data, error } = await supabase
         .from("follows")
         .select(`
-          follower:users(*)
+          follower:profiles(*)
         `)
         .eq("following_id", userId);
 
-      if (!error && data) {
-        return data.map((row: any) => ({
-          id: row.follower.id,
-          username: row.follower.username,
-          handle: row.follower.handle || row.follower.username.toLowerCase().replace(/\s/g, ""),
-          bio: row.follower.bio || "",
-          profileImage: row.follower.profile_image || "",
-          fandoms: row.follower.fandoms || [],
-          hobbies: row.follower.hobbies || [],
-          vibes: row.follower.vibes || [],
-          badges: ["Follower"]
-        }));
-      }
+      if (error) throw error;
+
+      return (data || []).map((row: any) => mapProfile(row.follower));
     }
 
     initLocalDB();
@@ -869,23 +888,13 @@ export const dbClient = {
       const { data, error } = await supabase
         .from("follows")
         .select(`
-          following:users(*)
+          following:profiles(*)
         `)
         .eq("follower_id", userId);
 
-      if (!error && data) {
-        return data.map((row: any) => ({
-          id: row.following.id,
-          username: row.following.username,
-          handle: row.following.handle || row.following.username.toLowerCase().replace(/\s/g, ""),
-          bio: row.following.bio || "",
-          profileImage: row.following.profile_image || "",
-          fandoms: row.following.fandoms || [],
-          hobbies: row.following.hobbies || [],
-          vibes: row.following.vibes || [],
-          badges: ["Following"]
-        }));
-      }
+      if (error) throw error;
+
+      return (data || []).map((row: any) => mapProfile(row.following));
     }
 
     initLocalDB();
@@ -895,68 +904,54 @@ export const dbClient = {
     return users.filter(u => followingIds.includes(u.id));
   },
 
-  // --- SIGNALS (NOTIFICATIONS) ---
+  // --- NOTIFICATIONS [signals] ---
   async getSignals(): Promise<any[]> {
     const currentId = await this.getCurrentUserId();
+    if (!currentId) return [];
+
     if (isSupabaseConfigured && supabase) {
       const { data, error } = await supabase
-        .from("signals")
-        .select(`
-          *,
-          sender:users(*)
-        `)
-        .eq("receiver_id", currentId)
+        .from("notifications")
+        .select("*")
+        .eq("user_id", currentId)
         .order("created_at", { ascending: false });
 
-      if (!error && data) {
-        return data.map((s: any) => ({
-          id: s.id,
-          type: s.type,
-          title: s.title,
-          body: s.body || "",
-          link: s.link || "/home",
-          isRead: s.is_read,
-          createdAt: new Date(s.created_at).toLocaleTimeString() + " - " + new Date(s.created_at).toLocaleDateString(),
-          sender: s.sender ? {
-            username: s.sender.username,
-            handle: s.sender.handle || s.sender.username.toLowerCase().replace(/\s/g, ""),
-            profileImage: s.sender.profile_image || ""
-          } : undefined
-        }));
-      }
+      if (error) throw error;
+
+      return (data || []).map((s: any) => ({
+        id: s.id,
+        type: s.type,
+        title: s.type === "like" ? "Post Liked" : s.type === "comment" ? "New Comment" : s.type === "follow" ? "New Follower" : "Space Alert",
+        body: s.content,
+        link: s.type === "follow" ? "/profile" : "/home",
+        isRead: s.read,
+        createdAt: new Date(s.created_at).toLocaleTimeString() + " - " + new Date(s.created_at).toLocaleDateString()
+      }));
     }
 
     initLocalDB();
     const signals = getLocal<any[]>(KEYS.SIGNALS, []);
-    const localUsers = getLocal<UserProfile[]>(KEYS.USERS, []);
     return signals
       .filter(s => s.receiver_id === currentId)
-      .map(s => {
-        const sender = localUsers.find(u => u.id === s.sender_id);
-        return {
-          id: s.id,
-          type: s.type,
-          title: s.title,
-          body: s.body || "",
-          link: s.link || "/home",
-          isRead: s.is_read,
-          createdAt: "recently",
-          sender: sender ? {
-            username: sender.username,
-            handle: sender.handle,
-            profileImage: sender.profileImage
-          } : undefined
-        };
-      })
+      .map(s => ({
+        id: s.id,
+        type: s.type,
+        title: s.title,
+        body: s.body || "",
+        link: s.link || "/home",
+        isRead: s.is_read,
+        createdAt: "recently"
+      }))
       .reverse();
   },
 
   async markSignalAsRead(signalId: string): Promise<void> {
     if (isSupabaseConfigured && supabase) {
-      await supabase
-        .from("signals")
-        .update({ is_read: true })
+      const { error } = await supabase
+        .from("notifications")
+        .update({ read: true })
         .eq("id", signalId);
+      if (error) throw error;
       return;
     }
     initLocalDB();
@@ -970,35 +965,30 @@ export const dbClient = {
 
   async createSignal(
     receiverId: string,
-    senderId: string | null,
     type: string,
-    title: string,
-    body?: string,
-    link?: string
+    content: string
   ): Promise<void> {
     if (isSupabaseConfigured && supabase) {
-      await supabase
-        .from("signals")
+      const { error } = await supabase
+        .from("notifications")
         .insert({
-          receiver_id: receiverId,
-          sender_id: senderId,
+          user_id: receiverId,
           type,
-          title,
-          body: body || null,
-          link: link || null
+          content
         });
+      if (error) throw error;
       return;
     }
     initLocalDB();
     const signals = getLocal<any[]>(KEYS.SIGNALS, []);
     signals.push({
-      id: `sig-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      id: `sig-${Date.now()}`,
       receiver_id: receiverId,
-      sender_id: senderId,
+      sender_id: "system",
       type,
-      title,
-      body,
-      link,
+      title: type,
+      body: content,
+      link: "/home",
       is_read: false,
       created_at: new Date().toISOString()
     });
@@ -1011,46 +1001,35 @@ export const dbClient = {
     if (!user) return [];
 
     if (isSupabaseConfigured && supabase) {
-      // In Supabase mode, we fetch from vibe_matches table
       const { data, error } = await supabase
         .from("vibe_matches")
         .select(`
           *,
-          user1:users!vibe_matches_user_id_1_fkey(*),
-          user2:users!vibe_matches_user_id_2_fkey(*)
+          user1:profiles!vibe_matches_user_id_1_fkey(*),
+          user2:profiles!vibe_matches_user_id_2_fkey(*)
         `)
         .or(`user_id_1.eq.${userId},user_id_2.eq.${userId}`);
 
-      if (!error && data) {
-        return data.map((row: any) => {
-          const isUser1 = row.user_id_1 === userId;
-          const counterpart = isUser1 ? row.user2 : row.user1;
-          return {
-            profile: {
-              id: counterpart.id,
-              username: counterpart.username,
-              handle: counterpart.handle || counterpart.username.toLowerCase().replace(/\s/g, ""),
-              bio: counterpart.bio || "",
-              profileImage: counterpart.profile_image || "",
-              fandoms: counterpart.fandoms || [],
-              hobbies: counterpart.hobbies || [],
-              vibes: counterpart.vibes || [],
-              badges: ["Vibe Peer"]
-            },
-            percentage: row.match_percentage,
-            sharedFandoms: row.shared_fandoms || [],
-            sharedHobbies: row.shared_hobbies || [],
-            sharedVibes: row.shared_vibes || []
-          };
-        }).sort((a, b) => b.percentage - a.percentage);
-      }
+      if (error) throw error;
+
+      return (data || []).map((row: any) => {
+        const isUser1 = row.user_id_1 === userId;
+        const counterpart = isUser1 ? row.user2 : row.user1;
+        return {
+          profile: mapProfile(counterpart),
+          percentage: row.match_percentage,
+          sharedFandoms: row.shared_fandoms || [],
+          sharedHobbies: row.shared_hobbies || [],
+          sharedVibes: row.shared_aesthetics || []
+        };
+      }).sort((a, b) => b.percentage - a.percentage);
     }
 
     // Client-side calculations (Dual-Mode Fallback)
     initLocalDB();
     const users = getLocal<UserProfile[]>(KEYS.USERS, mockPeople);
     const self = users.find(u => u.id === userId) || mockCurrentUser;
-    const matchesList = users
+    return users
       .filter(u => u.id !== userId)
       .map(other => {
         const match = this.calculateVibeMatchLocal(self, other);
@@ -1063,8 +1042,6 @@ export const dbClient = {
         };
       })
       .sort((a, b) => b.percentage - a.percentage);
-
-    return matchesList;
   },
 
   calculateVibeMatchLocal(self: UserProfile, other: UserProfile) {
@@ -1091,7 +1068,6 @@ export const dbClient = {
     const jaccardH = jaccard(h1, h2);
     const jaccardV = jaccard(v1, v2);
 
-    // Apply recipe weights: 45% Vibes + 35% Hobbies + 20% Fandoms
     const percentage = Math.round((jaccardV * 45) + (jaccardH * 35) + (jaccardF * 20));
 
     return {
@@ -1107,44 +1083,35 @@ export const dbClient = {
     const q = query.toLowerCase().trim();
     if (!q) return { users: [], spaces: [], tags: [], posts: [] };
 
-    // Spaces lookup
-    const matchedSpaces = mockSpaces.filter(
+    // Fetch Spaces
+    const spacesList = await this.getSpaces();
+    const matchedSpaces = spacesList.filter(
       s => s.name.toLowerCase().includes(q) || s.description.toLowerCase().includes(q) || s.vibe.toLowerCase().includes(q)
     );
 
-    // Dynamic database search
     if (isSupabaseConfigured && supabase) {
-      // Search Users
-      const { data: dbUsers } = await supabase
-        .from("users")
+      const { data: dbUsers, error: usersErr } = await supabase
+        .from("profiles")
         .select("*")
-        .or(`username.ilike.%${q}%,bio.ilike.%${q}%,handle.ilike.%${q}%`);
+        .or(`username.ilike.%${q}%,display_name.ilike.%${q}%,bio.ilike.%${q}%`);
 
-      // Search Posts
-      const { data: dbPosts } = await supabase
+      const { data: dbPosts, error: postsErr } = await supabase
         .from("posts")
         .select(`
           *,
-          user:users(*),
+          user:profiles(*),
           comments(
             *,
-            user:users(*)
+            user:profiles(*)
           ),
           likes(user_id)
         `)
         .or(`content.ilike.%${q}%,mood_tag.ilike.%${q}%`);
 
-      const resolvedUsers = (dbUsers || []).map((u: any) => ({
-        id: u.id,
-        username: u.username,
-        handle: u.handle || u.username.toLowerCase().replace(/\s/g, ""),
-        bio: u.bio || "",
-        profileImage: u.profile_image || "",
-        fandoms: u.fandoms || [],
-        hobbies: u.hobbies || [],
-        vibes: u.vibes || [],
-        badges: []
-      }));
+      if (usersErr) throw usersErr;
+      if (postsErr) throw postsErr;
+
+      const resolvedUsers = (dbUsers || []).map((u: any) => mapProfile(u));
 
       const resolvedPosts = (dbPosts || []).map((p: any) => ({
         id: p.id,
@@ -1155,21 +1122,19 @@ export const dbClient = {
         musicLink: p.music_link,
         createdAt: new Date(p.created_at).toLocaleDateString(),
         likes: p.likes ? p.likes.length : 0,
-        user: {
-          id: p.user.id,
-          username: p.user.username,
-          handle: p.user.handle || p.user.username.toLowerCase().replace(/\s/g, ""),
-          bio: p.user.bio || "",
-          profileImage: p.user.profile_image || "",
-          fandoms: p.user.fandoms || [],
-          hobbies: p.user.hobbies || [],
-          vibes: p.user.vibes || [],
-          badges: []
-        },
-        comments: []
+        user: mapProfile(p.user),
+        comments: (p.comments || []).map((c: any) => ({
+          id: c.id,
+          content: c.content,
+          createdAt: new Date(c.created_at).toLocaleDateString(),
+          user: {
+            username: c.user?.display_name || "Anonymous",
+            handle: c.user?.username || "anonymous",
+            profileImage: c.user?.avatar_url || ""
+          }
+        }))
       }));
 
-      // Collect matched tags
       const matchedTags: string[] = [];
       resolvedUsers.forEach(u => {
         u.fandoms.forEach(f => { if (f.toLowerCase().includes(q) && !matchedTags.includes(f)) matchedTags.push(f); });
@@ -1185,7 +1150,6 @@ export const dbClient = {
       };
     }
 
-    // Local Storage Mock Search
     initLocalDB();
     const users = getLocal<UserProfile[]>(KEYS.USERS, mockPeople);
     const posts = await this.getPosts();
@@ -1223,12 +1187,12 @@ export const dbClient = {
     engagementRate: number;
   }> {
     if (isSupabaseConfigured && supabase) {
-      const { count: userCount } = await supabase.from("users").select("*", { count: "exact", head: true });
+      const { count: userCount } = await supabase.from("profiles").select("*", { count: "exact", head: true });
       const { count: postCount } = await supabase.from("posts").select("*", { count: "exact", head: true });
       const { count: likesCount } = await supabase.from("likes").select("*", { count: "exact", head: true });
       const { count: commentsCount } = await supabase.from("comments").select("*", { count: "exact", head: true });
 
-      const { data: allUsers } = await supabase.from("users").select("fandoms, hobbies");
+      const { data: allUsers } = await supabase.from("profiles").select("fandoms, hobbies");
       const { data: allPosts } = await supabase.from("posts").select("space_id");
 
       const fandomCounts: Record<string, number> = {};
@@ -1243,8 +1207,9 @@ export const dbClient = {
         if (p.space_id) spaceCounts[p.space_id] = (spaceCounts[p.space_id] || 0) + 1;
       });
 
+      const spacesList = await this.getSpaces();
       const trendingSpaces = Object.entries(spaceCounts).map(([sid, cnt]) => {
-        const space = mockSpaces.find(s => s.id === sid);
+        const space = spacesList.find(s => s.id === sid);
         return { spaceName: space ? space.name : "Unknown Space", count: cnt };
       }).sort((a, b) => b.count - a.count).slice(0, 3);
 
@@ -1262,13 +1227,11 @@ export const dbClient = {
       const totalP = postCount || 0;
       const totalL = likesCount || 0;
       const totalC = commentsCount || 0;
-
-      // Active Users is user count + simulated engagement active status
       const engagement = Math.round(((totalL + totalC + totalP) / totalU) * 10) / 10;
 
       return {
         totalUsers: totalU,
-        activeUsers: Math.min(totalU, Math.max(1, Math.round(totalU * 0.72))), // 72% active metric estimation
+        activeUsers: Math.min(totalU, Math.max(1, Math.round(totalU * 0.72))),
         totalPosts: totalP,
         trendingSpaces,
         topFandoms,
@@ -1277,7 +1240,6 @@ export const dbClient = {
       };
     }
 
-    // Local Storage Mock Analytics (Feature 8)
     initLocalDB();
     const users = getLocal<UserProfile[]>(KEYS.USERS, mockPeople);
     const posts = getLocal<any[]>(KEYS.POSTS, []);
@@ -1302,7 +1264,7 @@ export const dbClient = {
 
     return {
       totalUsers: users.length,
-      activeUsers: Math.round(users.length * 0.85), // 85% demo active rate
+      activeUsers: Math.round(users.length * 0.85),
       totalPosts: posts.length,
       trendingSpaces,
       topFandoms: Object.entries(fandomCounts).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count),
