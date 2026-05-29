@@ -108,12 +108,30 @@ export function initLocalDB() {
   }
 }
 
+const isUUID = (val: any): boolean => {
+  if (typeof val !== "string") return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
+};
+
 // Helper to translate database profiles to client-side UserProfile types
 function mapProfile(p: any): UserProfile {
+  if (!p) {
+    return {
+      id: "unknown",
+      username: "Dreamer",
+      handle: "dreamer",
+      profileImage: "https://images.unsplash.com/photo-1502823403499-6ccfcf4fb453?auto=format&fit=crop&w=600&q=80",
+      bio: "A mysterious dreamer.",
+      fandoms: [],
+      hobbies: [],
+      vibes: [],
+      badges: ["Explorer"]
+    };
+  }
   return {
     id: p.id,
     username: p.display_name || p.username || "Dreamer",
-    handle: p.username,
+    handle: p.username || "dreamer",
     profileImage: p.avatar_url || "https://images.unsplash.com/photo-1502823403499-6ccfcf4fb453?auto=format&fit=crop&w=600&q=80",
     bio: p.bio || "",
     fandoms: (p.fandoms as Fandom[]) || [],
@@ -286,16 +304,16 @@ export const dbClient = {
         .from("posts")
         .select(`
           *,
-          user:profiles(*),
+          user:profiles!posts_user_id_fkey(*),
           comments(
             *,
-            user:profiles(*)
+            user:profiles!comments_user_id_fkey(*)
           ),
           likes(user_id)
         `)
         .order("created_at", { ascending: false });
 
-      if (spaceId && spaceId !== "all") {
+      if (spaceId && spaceId !== "all" && isUUID(spaceId)) {
         query = query.eq("space_id", spaceId);
       }
 
@@ -370,13 +388,13 @@ export const dbClient = {
           user_id: currentId,
           content: post.content,
           image_url: post.imageUrl || null,
-          space_id: post.spaceId,
+          space_id: (post.spaceId && isUUID(post.spaceId)) ? post.spaceId : null,
           mood_tag: post.moodTag,
           music_link: post.musicLink || null
         })
         .select(`
           *,
-          user:profiles(*)
+          user:profiles!posts_user_id_fkey(*)
         `)
         .single();
       
@@ -451,8 +469,10 @@ export const dbClient = {
       
       if (error) throw error;
 
+      const spacesData = data || [];
+
       // Self-healing database seeding: if spaces table returns empty, seed default spaces from client-side!
-      if (!data || data.length === 0) {
+      if (spacesData.length === 0) {
         const defaultSpaces = mockSpaces.map(s => ({
           id: s.id,
           name: s.name,
@@ -466,7 +486,7 @@ export const dbClient = {
           .insert(defaultSpaces)
           .select();
         
-        if (!seedError && seededData) {
+        if (!seedError && seededData && seededData.length > 0) {
           return seededData.map((s: any) => ({
             id: s.id,
             name: s.name,
@@ -477,9 +497,11 @@ export const dbClient = {
             liveNow: 120
           }));
         }
+
+        return mockSpaces;
       }
 
-      return data.map((s: any) => ({
+      return spacesData.map((s: any) => ({
         id: s.id,
         name: s.name,
         description: s.description,
@@ -497,6 +519,7 @@ export const dbClient = {
   async joinSpace(spaceId: string): Promise<boolean> {
     const currentId = await this.getCurrentUserId();
     if (!currentId) throw new Error("Must be logged in to join spaces.");
+    if (!spaceId || !isUUID(spaceId)) return false;
 
     if (isSupabaseConfigured && supabase) {
       const { error } = await supabase
@@ -522,6 +545,7 @@ export const dbClient = {
   async leaveSpace(spaceId: string): Promise<boolean> {
     const currentId = await this.getCurrentUserId();
     if (!currentId) throw new Error("Must be logged in to leave spaces.");
+    if (!spaceId || !isUUID(spaceId)) return false;
 
     if (isSupabaseConfigured && supabase) {
       const { error } = await supabase
@@ -538,6 +562,7 @@ export const dbClient = {
   async isSpaceMember(spaceId: string): Promise<boolean> {
     const currentId = await this.getCurrentUserId();
     if (!currentId) return false;
+    if (!spaceId || !isUUID(spaceId)) return false;
 
     if (isSupabaseConfigured && supabase) {
       const { data, error } = await supabase
@@ -751,10 +776,10 @@ export const dbClient = {
         .select(`
           post:posts(
             *,
-            user:profiles(*),
+            user:profiles!posts_user_id_fkey(*),
             comments(
               *,
-              user:profiles(*)
+              user:profiles!comments_user_id_fkey(*)
             ),
             likes(user_id)
           )
@@ -765,6 +790,7 @@ export const dbClient = {
 
       return (data || []).map((row: any) => {
         const p = row.post;
+        if (!p) return null;
         return {
           id: p.id,
           content: p.content || "",
@@ -786,7 +812,7 @@ export const dbClient = {
             }
           }))
         };
-      });
+      }).filter(Boolean) as Post[];
     }
 
     initLocalDB();
@@ -867,7 +893,7 @@ export const dbClient = {
       const { data, error } = await supabase
         .from("follows")
         .select(`
-          follower:profiles(*)
+          follower:profiles!follows_follower_id_fkey(*)
         `)
         .eq("following_id", userId);
 
@@ -888,7 +914,7 @@ export const dbClient = {
       const { data, error } = await supabase
         .from("follows")
         .select(`
-          following:profiles(*)
+          following:profiles!follows_following_id_fkey(*)
         `)
         .eq("follower_id", userId);
 
@@ -1099,10 +1125,10 @@ export const dbClient = {
         .from("posts")
         .select(`
           *,
-          user:profiles(*),
+          user:profiles!posts_user_id_fkey(*),
           comments(
             *,
-            user:profiles(*)
+            user:profiles!comments_user_id_fkey(*)
           ),
           likes(user_id)
         `)
