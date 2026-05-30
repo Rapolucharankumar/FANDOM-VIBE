@@ -105,14 +105,17 @@ export default function SpaceDetailPage() {
               </div>
 
               <div className="flex items-center gap-3">
-                {isMember && (
-                  <button
-                    onClick={() => setShowLiveRoom(!showLiveRoom)}
-                    className="focus-ring shrink-0 rounded-xl px-5 py-2.5 text-sm font-bold transition-all shadow-md bg-white text-ink hover:bg-white/90"
-                  >
-                    {showLiveRoom ? "Leave Room" : "🎧 Join Audio Room"}
-                  </button>
-                )}
+                <button
+                  onClick={async () => {
+                    if (!isMember) {
+                      await joinSpace();
+                    }
+                    setShowLiveRoom(!showLiveRoom);
+                  }}
+                  className="focus-ring shrink-0 rounded-xl px-5 py-2.5 text-sm font-bold transition-all shadow-md bg-white text-ink hover:bg-white/90"
+                >
+                  {showLiveRoom ? "End Live" : "🎙️ Go Live"}
+                </button>
                 {!memberLoading && (
                   <button
                     onClick={handleToggleMembership}
