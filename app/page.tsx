@@ -106,12 +106,6 @@ export default function LandingPage() {
                 Enter the universe
                 <ArrowRight className="size-4" />
               </Link>
-              <Link
-                href="/home"
-                className="glass-button focus-ring inline-flex items-center justify-center gap-2 rounded-2xl px-6 py-4 text-sm font-bold"
-              >
-                View demo city
-              </Link>
             </div>
           </motion.div>
         </div>

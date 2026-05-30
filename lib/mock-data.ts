@@ -21,8 +21,8 @@ export const spaces: Space[] = [
     coverImage:
       "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=1200&q=80",
     vibe: "Midnight Energy",
-    members: "18.4k",
-    liveNow: 240
+    members: 0,
+    liveNow: 0
   },
   {
     id: "550e8400-e29b-41d4-a716-446655440002",
@@ -31,8 +31,8 @@ export const spaces: Space[] = [
     coverImage:
       "https://images.unsplash.com/photo-1511081692775-05d0f180a065?auto=format&fit=crop&w=1200&q=80",
     vibe: "Cozy Cafe",
-    members: "24.1k",
-    liveNow: 318
+    members: 0,
+    liveNow: 0
   },
   {
     id: "550e8400-e29b-41d4-a716-446655440003",
@@ -41,8 +41,8 @@ export const spaces: Space[] = [
     coverImage:
       "https://images.unsplash.com/photo-1496747611176-843222e1e57c?auto=format&fit=crop&w=1200&q=80",
     vibe: "Streetwear",
-    members: "16.8k",
-    liveNow: 186
+    members: 0,
+    liveNow: 0
   },
   {
     id: "550e8400-e29b-41d4-a716-446655440004",
@@ -51,8 +51,8 @@ export const spaces: Space[] = [
     coverImage:
       "https://images.unsplash.com/photo-1516280440614-37939bbacd81?auto=format&fit=crop&w=1200&q=80",
     vibe: "Film Aesthetic",
-    members: "9.7k",
-    liveNow: 94
+    members: 0,
+    liveNow: 0
   },
   {
     id: "550e8400-e29b-41d4-a716-446655440005",
@@ -61,8 +61,8 @@ export const spaces: Space[] = [
     coverImage:
       "https://images.unsplash.com/photo-1528360983277-13d401cdc186?auto=format&fit=crop&w=1200&q=80",
     vibe: "Dreamcore",
-    members: "21.5k",
-    liveNow: 275
+    members: 0,
+    liveNow: 0
   }
 ];
 

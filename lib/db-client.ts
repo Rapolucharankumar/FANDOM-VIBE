@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 import { currentUser as mockCurrentUser, people as mockPeople, posts as mockPosts, spaces as mockSpaces } from "@/lib/mock-data";
-import type { UserProfile, Post, Comment, Space, VibeTag, Fandom, Hobby } from "@/types/app";
+import type { UserProfile, Post, Comment, Space, SpaceMessage, VibeTag, Fandom, Hobby } from "@/types/app";
 
 // LocalStorage key constants (only used in offline demo mode)
 const KEYS = {
@@ -493,12 +493,22 @@ export const dbClient = {
             description: s.description,
             coverImage: s.cover_image || "",
             vibe: (s.vibe || "Minimal") as VibeTag,
-            members: "10k",
-            liveNow: 120
+            members: 0,
+            liveNow: 0
           }));
         }
 
         return mockSpaces;
+      }
+
+      // Fetch real member counts for each space
+      const memberCounts: Record<string, number> = {};
+      for (const s of spacesData) {
+        const { count } = await supabase
+          .from("space_members")
+          .select("*", { count: "exact", head: true })
+          .eq("space_id", s.id);
+        memberCounts[s.id] = count || 0;
       }
 
       return spacesData.map((s: any) => ({
@@ -507,8 +517,8 @@ export const dbClient = {
         description: s.description,
         coverImage: s.cover_image || "https://images.unsplash.com/photo-1511081692775-05d0f180a065?auto=format&fit=crop&w=1200&q=80",
         vibe: (s.vibe || "Minimal") as VibeTag,
-        members: "10k", // Hardcoded indicators preserved for visual layouts
-        liveNow: 120
+        members: memberCounts[s.id] || 0,
+        liveNow: 0 // Managed by Supabase Presence on the client side
       }));
     }
     initLocalDB();
@@ -1297,5 +1307,87 @@ export const dbClient = {
       topHobbies: Object.entries(hobbyCounts).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count),
       engagementRate: Math.round(((posts.length + likes.length) / users.length) * 10) / 10
     };
+  },
+
+  // --- SPACE CHAT ---
+  async getSpaceMemberCount(spaceId: string): Promise<number> {
+    if (isSupabaseConfigured && supabase) {
+      const { count, error } = await supabase
+        .from("space_members")
+        .select("*", { count: "exact", head: true })
+        .eq("space_id", spaceId);
+      if (error) throw error;
+      return count || 0;
+    }
+    return 0;
+  },
+
+  async getSpaceMessages(spaceId: string, limit: number = 50): Promise<SpaceMessage[]> {
+    if (isSupabaseConfigured && supabase) {
+      const { data, error } = await supabase
+        .from("space_messages")
+        .select(`
+          *,
+          user:profiles!space_messages_user_id_fkey(*)
+        `)
+        .eq("space_id", spaceId)
+        .order("created_at", { ascending: true })
+        .limit(limit);
+
+      if (error) throw error;
+
+      return (data || []).map((m: any) => ({
+        id: m.id,
+        spaceId: m.space_id,
+        userId: m.user_id,
+        content: m.content,
+        createdAt: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        user: {
+          username: m.user?.display_name || m.user?.username || "Anonymous",
+          handle: m.user?.username || "anonymous",
+          profileImage: m.user?.avatar_url || ""
+        }
+      }));
+    }
+
+    // Local mode: return empty (no chat in offline mode)
+    return [];
+  },
+
+  async sendSpaceMessage(spaceId: string, content: string): Promise<SpaceMessage | null> {
+    const currentId = await this.getCurrentUserId();
+    if (!currentId) throw new Error("Must be logged in to send messages.");
+
+    if (isSupabaseConfigured && supabase) {
+      const { data, error } = await supabase
+        .from("space_messages")
+        .insert({
+          space_id: spaceId,
+          user_id: currentId,
+          content: content.slice(0, 500)
+        })
+        .select(`
+          *,
+          user:profiles!space_messages_user_id_fkey(*)
+        `)
+        .single();
+
+      if (error) throw error;
+
+      return {
+        id: data.id,
+        spaceId: data.space_id,
+        userId: data.user_id,
+        content: data.content,
+        createdAt: new Date(data.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        user: {
+          username: data.user?.display_name || data.user?.username || "Anonymous",
+          handle: data.user?.username || "anonymous",
+          profileImage: data.user?.avatar_url || ""
+        }
+      };
+    }
+
+    return null;
   }
 };

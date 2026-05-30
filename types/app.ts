@@ -34,7 +34,7 @@ export type Space = {
   description: string;
   coverImage: string;
   vibe: VibeTag;
-  members: string;
+  members: number;
   liveNow: number;
 };
 
@@ -68,4 +68,13 @@ export type Post = {
   createdAt: string;
   likes: number;
   comments: Comment[];
+};
+
+export type SpaceMessage = {
+  id: string;
+  spaceId: string;
+  userId: string;
+  content: string;
+  createdAt: string;
+  user: Pick<UserProfile, "username" | "profileImage" | "handle">;
 };

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { PostCard } from "@/components/feed/post-card";
 import { ProfileHeader } from "@/components/profile/profile-header";
 import { EditProfileModal } from "@/components/profile/edit-profile-modal";
@@ -8,7 +9,8 @@ import { AppShell } from "@/components/layout/app-shell";
 import { CreatePostModal } from "@/components/feed/create-post-modal";
 import { useAuth, useFeed, useMatches } from "@/hooks/use-db";
 import { dbClient } from "@/lib/db-client";
-import { Heart, Bookmark, Loader2, Sparkles, MessageCircle, Rss } from "lucide-react";
+import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
+import { Heart, Bookmark, Loader2, Sparkles, MessageCircle, Rss, LogOut } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import type { Post } from "@/types/app";
@@ -16,6 +18,7 @@ import type { Post } from "@/types/app";
 type ProfileTab = "posts" | "liked" | "saved" | "comments";
 
 export default function ProfilePage() {
+  const router = useRouter();
   const { user, updateProfile, loading: authLoading } = useAuth();
   const { posts: allPosts, addPost } = useFeed();
   const { matches, loading: matchesLoading } = useMatches(user?.id);
@@ -88,6 +91,22 @@ export default function ProfilePage() {
           isCurrentUser={true}
           onEdit={() => setEditProfileOpen(true)}
         />
+
+        {/* Logout Button */}
+        <button
+          onClick={async () => {
+            if (isSupabaseConfigured && supabase) {
+              await supabase.auth.signOut();
+            } else {
+              window.localStorage.removeItem("fandom-vibe-current-user-id");
+            }
+            router.push("/login");
+          }}
+          className="focus-ring inline-flex items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/8 px-5 py-3 text-sm font-bold text-white/80 hover:bg-white/14 hover:text-white transition"
+        >
+          <LogOut className="size-4" />
+          Log out
+        </button>
 
         <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
           {/* Tabs & Posts list */}

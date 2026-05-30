@@ -1,6 +1,6 @@
 "use client";
 
-import { BadgeCheck, Camera, Music2, Sparkles, UserPlus, UserCheck } from "lucide-react";
+import { BadgeCheck, Camera, Music2, Sparkles, UserPlus, UserCheck, Users } from "lucide-react";
 import Image from "next/image";
 import { Tag } from "@/components/ui/tag";
 import type { UserProfile } from "@/types/app";
@@ -14,7 +14,7 @@ type ProfileHeaderProps = {
 };
 
 export function ProfileHeader({ profile, isCurrentUser = false, onEdit }: ProfileHeaderProps) {
-  const { following, toggleFollow, loading } = useFollow(isCurrentUser ? undefined : profile.id);
+  const { following, followers, followingList, toggleFollow, loading } = useFollow(profile.id);
 
   return (
     <section className="glass-panel overflow-hidden rounded-[34px]">
@@ -48,6 +48,19 @@ export function ProfileHeader({ profile, isCurrentUser = false, onEdit }: Profil
               </div>
               <p className="mt-1 text-sm font-semibold text-white/48">@{profile.handle}</p>
               <p className="mt-3 max-w-2xl text-sm leading-6 text-white/70">{profile.bio}</p>
+
+              {/* Follower / Following counts */}
+              <div className="mt-3 flex items-center gap-5">
+                <div className="flex items-center gap-1.5">
+                  <Users className="size-4 text-cyan" />
+                  <span className="text-sm font-extrabold text-white">{followers.length}</span>
+                  <span className="text-xs text-white/50">followers</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm font-extrabold text-white">{followingList.length}</span>
+                  <span className="text-xs text-white/50">following</span>
+                </div>
+              </div>
             </div>
           </div>
           
@@ -124,3 +137,4 @@ export function ProfileHeader({ profile, isCurrentUser = false, onEdit }: Profil
     </section>
   );
 }
+

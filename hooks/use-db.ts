@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { dbClient } from "@/lib/db-client";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
-import type { UserProfile, Post, Comment, Space } from "@/types/app";
+import type { UserProfile, Post, Comment, Space, SpaceMessage } from "@/types/app";
 
 // 1. Hook for handling Authentication & Current User Profiles
 export function useAuth() {
@@ -387,7 +387,7 @@ export function useSpaces() {
   return { spaces, loading, error, refreshSpaces: fetchSpaces };
 }
 
-// 10. Hook for Space Membership Join/Leave [NEW]
+// 10. Hook for Space Membership Join/Leave
 export function useSpaceMembership(spaceId: string) {
   const [isMember, setIsMember] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -432,4 +432,128 @@ export function useSpaceMembership(spaceId: string) {
   }, [spaceId, checkMembership]);
 
   return { isMember, loading, joinSpace, leaveSpace, refreshMembership: checkMembership };
+}
+
+// 11. Hook for Space Live Chat with Realtime message subscription
+export function useSpaceChat(spaceId: string) {
+  const [messages, setMessages] = useState<SpaceMessage[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+
+  const fetchMessages = useCallback(async () => {
+    if (!spaceId) return;
+    try {
+      setLoading(true);
+      const data = await dbClient.getSpaceMessages(spaceId);
+      setMessages(data);
+    } catch (err) {
+      console.error("Failed to load space messages:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [spaceId]);
+
+  const sendMessage = async (content: string) => {
+    if (!content.trim() || sending) return;
+    try {
+      setSending(true);
+      await dbClient.sendSpaceMessage(spaceId, content.trim());
+      // Message will appear via realtime subscription, no need to manually add
+    } catch (err) {
+      console.error("Failed to send message:", err);
+      throw err;
+    } finally {
+      setSending(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchMessages();
+
+    if (isSupabaseConfigured && supabase) {
+      const channel = supabase
+        .channel(`space-chat-${spaceId}-${Math.random().toString(36).substring(2, 9)}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "space_messages",
+            filter: `space_id=eq.${spaceId}`
+          },
+          async () => {
+            // Refetch all messages to get joined user data
+            const data = await dbClient.getSpaceMessages(spaceId);
+            setMessages(data);
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
+  }, [spaceId]);
+
+  return { messages, loading, sending, sendMessage, refreshMessages: fetchMessages };
+}
+
+// 12. Hook for Space Presence (live user tracking via Supabase Presence)
+export function useSpacePresence(spaceId: string) {
+  const [onlineCount, setOnlineCount] = useState(0);
+  const [onlineUsers, setOnlineUsers] = useState<{ userId: string; username: string }[]>([]);
+
+  useEffect(() => {
+    if (!spaceId || !isSupabaseConfigured || !supabase) {
+      setOnlineCount(0);
+      setOnlineUsers([]);
+      return;
+    }
+
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+
+    const setup = async () => {
+      const currentId = await dbClient.getCurrentUserId();
+      const currentUser = await dbClient.getCurrentUser();
+      if (!currentId || !currentUser) return;
+
+      channel = supabase.channel(`space-presence-${spaceId}`, {
+        config: { presence: { key: currentId } }
+      });
+
+      channel
+        .on("presence", { event: "sync" }, () => {
+          const state = channel!.presenceState();
+          const users: { userId: string; username: string }[] = [];
+          Object.entries(state).forEach(([key, presences]) => {
+            if (Array.isArray(presences) && presences.length > 0) {
+              users.push({
+                userId: key,
+                username: (presences[0] as any).username || "Anonymous"
+              });
+            }
+          });
+          setOnlineUsers(users);
+          setOnlineCount(users.length);
+        })
+        .subscribe(async (status) => {
+          if (status === "SUBSCRIBED") {
+            await channel!.track({
+              username: currentUser.username,
+              online_at: new Date().toISOString()
+            });
+          }
+        });
+    };
+
+    setup();
+
+    return () => {
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+    };
+  }, [spaceId]);
+
+  return { onlineCount, onlineUsers };
 }
