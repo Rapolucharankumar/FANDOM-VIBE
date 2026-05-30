@@ -1,10 +1,11 @@
 "use client";
 
-import { use } from "react";
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { ArrowLeft, Radio, UsersRound, Loader2 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
+import { useParams } from "next/navigation";
 import { ShellWithPostModal } from "@/components/layout/shell-with-post-modal";
 import { SpaceChat } from "@/components/spaces/space-chat";
 import { LiveRoom } from "@/components/spaces/live-room";
@@ -18,8 +19,9 @@ function formatCount(n: number | undefined | null): string {
   return n.toString();
 }
 
-export default function SpaceDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
+export default function SpaceDetailPage() {
+  const params = useParams<{ id: string }>();
+  const id = params?.id as string;
   const { spaces, loading: spacesLoading } = useSpaces();
   const { isMember, loading: memberLoading, joinSpace, leaveSpace } = useSpaceMembership(id);
   const { messages, loading: chatLoading, sending, sendMessage } = useSpaceChat(id);
