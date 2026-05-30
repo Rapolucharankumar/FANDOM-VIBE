@@ -13,6 +13,7 @@ import {
 import "@livekit/components-styles";
 import { Track } from "livekit-client";
 import { Loader2, Mic, MicOff, Video, VideoOff } from "lucide-react";
+import { useAuth } from "@/hooks/use-db";
 
 type LiveRoomProps = {
   roomName: string;
@@ -22,13 +23,15 @@ type LiveRoomProps = {
 export function LiveRoom({ roomName, onLeave }: LiveRoomProps) {
   const [token, setToken] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
+  const { user } = useAuth();
 
   const serverUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL;
 
   useEffect(() => {
     (async () => {
       try {
-        const resp = await fetch(`/api/livekit?room=${roomName}`);
+        const usernameParam = user?.username ? `&username=${encodeURIComponent(user.username)}` : "";
+        const resp = await fetch(`/api/livekit?room=${roomName}${usernameParam}`);
         const data = await resp.json();
         if (!resp.ok) {
           throw new Error(data.error || "Failed to fetch token");
